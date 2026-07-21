@@ -572,7 +572,7 @@ const sails = document.getElementById("sails"), pctx = sails.getContext("2d");
 
 function resize() {
   sea.width = Math.max(300, window.innerWidth - 330);
-  sea.height = window.innerHeight;
+  sea.height = Math.max(200, window.innerHeight);
 }
 window.addEventListener("resize", resize);
 
@@ -1490,29 +1490,37 @@ function pollKeys(dt) {
 }
 
 // ---------- main loop ----------
-let last = performance.now(), lastWxPaint = 0;
+let last = performance.now(), lastWxPaint = 0, frameErrs = 0;
 function frame(now) {
-  const dt = Math.min((now - last) / 1000, 0.05);
-  last = now;
-  if (!sim.paused) {
-    pollKeys(dt);
-    stepWeather(dt);
-    // fixed substeps for stability
-    const n = Math.max(1, Math.round(dt / 0.02));
-    for (let i = 0; i < n; i++) step(dt / n);
-    autoHint();
+  // Never let one bad frame kill the loop: log the first few failures and
+  // keep sailing, rather than freezing the simulator with no explanation.
+  try {
+    const dt = Math.min((now - last) / 1000, 0.05);
+    last = now;
+    if (!sim.paused) {
+      pollKeys(dt);
+      stepWeather(dt);
+      // fixed substeps for stability
+      const n = Math.max(1, Math.round(dt / 0.02));
+      for (let i = 0; i < n; i++) step(dt / n);
+      autoHint();
+    }
+    if (now - lastWxPaint > 500) { paintWx(); lastWxPaint = now; }
+    if (view.mode === "top") { drawSea(); drawSailPanel(); }
+    else drawCockpit();
+    updateInstruments();
+  } catch (e) {
+    if (frameErrs++ < 3) console.error("frame error:", e);
+    if (frameErrs === 3) console.error("(further frame errors suppressed)");
   }
-  if (now - lastWxPaint > 500) { $("wxStatus").innerHTML = weatherStatusHtml(); lastWxPaint = now; }
-  if (view.mode === "top") { drawSea(); drawSailPanel(); }
-  else drawCockpit();
-  updateInstruments();
   requestAnimationFrame(frame);
 }
 
 // test hook: advance simulation quickly without rendering
 function fastForward(seconds) { const n = Math.round(seconds / 0.02); for (let i = 0; i < n; i++) step(0.02); }
 window.SIM = { sim, wind, step, fastForward, windPreset, resetSim, setBacked, view, setLook,
-               updateViewButtons, weather, fetchLiveWeather, weatherStatusHtml, topView };
+               updateViewButtons, weather, fetchLiveWeather, weatherStatusHtml, topView,
+               frame, paintWx };
 
 resize();
 resetSim();
