@@ -49,7 +49,14 @@ Each one streams, flutters, stalls, or hangs limp based on the sail's actual ang
 | `T` | Look up at the masthead vane |
 | `6` | Cockpit ⇄ god's eye |
 | `5` | Cycle god's-eye map (water / satellite / chart) — wheel zooms |
+| `M` | Wind and sail sound on / off |
 | `P` | Pause |
+
+### Sound
+
+Off by default; press `M` or the sound button to start it (browsers require a click or keypress before any audio can play). Everything is synthesized with the Web Audio API — there are no sound files to download, and it still works offline.
+
+The soundscape follows **apparent** wind, not true wind, so the rig audibly builds as the boat accelerates and softens as you bear away — the same cue you get on the water. Three layers: the low body of the wind, the higher hiss through the rig, and canvas flogging when a sail luffs, which flaps faster and louder as the breeze gets up. Head into the wind and you'll hear both sails break before you see them.
 
 ### Two jib sheets
 

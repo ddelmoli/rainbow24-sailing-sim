@@ -110,6 +110,13 @@
     <button id="bMap">🗺 Map: water (5) — wheel zooms</button>
   </div>
   <div class="row">
+    <button id="bSound">🔇 Sound off (M)</button>
+  </div>
+  <div class="ctl" id="volRow" style="display:none">
+    <label><span>Volume <b id="vVol">60%</b></span><span>wind &amp; sails</span></label>
+    <input type="range" id="cVol" min="0" max="100" value="60" step="1">
+  </div>
+  <div class="row">
     <button id="lookPort">◀ Port (C)</button>
     <button id="lookFwd" class="sel">Fwd (V)</button>
     <button id="lookStbd">Stbd (B) ▶</button>
@@ -147,7 +154,8 @@
     <kbd>Y</kbd>/<kbd>U</kbd> ease / trim port jib &nbsp; <kbd>O</kbd>/<kbd>I</kbd> ease / trim stbd jib<br>
     <kbd>Z</kbd> back the jib (hold) &nbsp; <kbd>P</kbd> pause<br>
     <kbd>C</kbd>/<kbd>V</kbd>/<kbd>B</kbd> look port / fwd / stbd &nbsp; <kbd>T</kbd> masthead vane<br>
-    <kbd>H</kbd>/<kbd>J</kbd> sit port / starboard &nbsp; <kbd>6</kbd> cockpit ⇄ god's eye &nbsp; <kbd>5</kbd> map
+    <kbd>H</kbd>/<kbd>J</kbd> sit port / starboard &nbsp; <kbd>6</kbd> cockpit ⇄ god's eye &nbsp; <kbd>5</kbd> map<br>
+    <kbd>M</kbd> wind &amp; sail sound on / off
   </div>
   <div class="footer">
     <b>NOT FOR NAVIGATION.</b> A training toy: physics are simplified, and charted
@@ -1421,6 +1429,91 @@ function updateInstruments() {
     pointOfSail(twaD, sim.v * KN) + (o.awa >= 0 ? "  ·  starboard tack" : "  ·  port tack");
 }
 
+// ==========================================================
+// Sound — synthesized wind and sail noise (Web Audio, no assets).
+// Volume and pitch follow APPARENT wind, so the rig gets louder as
+// the boat accelerates and quieter as you bear away, just like life.
+// ==========================================================
+const audio = { ctx: null, on: false, vol: 0.6, flapPhase: 0, nodes: null };
+
+function audioStart() {
+  if (audio.ctx) { audio.ctx.resume(); return; }
+  const Ctx = window.AudioContext || window.webkitAudioContext;
+  if (!Ctx) return;
+  const ctx = new Ctx();
+  audio.ctx = ctx;
+  const master = ctx.createGain();
+  master.gain.value = audio.vol;
+  master.connect(ctx.destination);
+
+  // pink-ish noise (Kellet approximation) — far more wind-like than white
+  const len = Math.floor(ctx.sampleRate * 2.5);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const d = buf.getChannelData(0);
+  let b0 = 0, b1 = 0, b2 = 0;
+  for (let i = 0; i < len; i++) {
+    const w = Math.random() * 2 - 1;
+    b0 = 0.99765 * b0 + w * 0.0990460;
+    b1 = 0.96300 * b1 + w * 0.2965164;
+    b2 = 0.57000 * b2 + w * 1.0526913;
+    d[i] = (b0 + b1 + b2 + w * 0.1848) * 0.2;
+  }
+  const src = () => { const s = ctx.createBufferSource(); s.buffer = buf; s.loop = true; s.start(); return s; };
+  const chain = (type, freq, q) => {
+    const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+    const g = ctx.createGain(); g.gain.value = 0;
+    src().connect(f); f.connect(g); g.connect(master);
+    return { f, g };
+  };
+  audio.nodes = {
+    master,
+    low:  chain("lowpass",  320,  0.6),   // the body of the wind
+    hi:   chain("bandpass", 1400, 0.8),   // hiss through the rig
+    luff: chain("lowpass",  700,  1.2),   // canvas flogging
+  };
+}
+
+function updateAudio(dt) {
+  const n = audio.nodes;
+  if (!audio.on || !audio.ctx || !n || !sim.out.w) return;
+  const T = audio.ctx.currentTime, o = sim.out;
+  const awsKn = o.aws * KN;
+  const q = clamp((awsKn - 1.5) / 24, 0, 1);
+  const quiet = sim.paused;
+
+  n.low.g.gain.setTargetAtTime(quiet ? 0 : Math.pow(q, 1.4) * 0.50, T, 0.12);
+  n.hi.g.gain.setTargetAtTime(quiet ? 0 : Math.pow(q, 2.0) * 0.30, T, 0.12);
+  n.low.f.frequency.setTargetAtTime(180 + awsKn * 14, T, 0.20);
+  n.hi.f.frequency.setTargetAtTime(700 + awsKn * 75, T, 0.20);
+
+  // a luffing sail flogs: rate and loudness both climb with the breeze
+  const lf = s => s.alpha < 5 ? 1 : s.alpha < 9 ? (9 - s.alpha) / 4 : 0;
+  const luff = Math.min(1, lf(o.main) * 0.75 + lf(o.jib) * 0.6);
+  audio.flapPhase += dt * (2.2 + awsKn * 0.22) * 2 * Math.PI;
+  const env = 0.4 + 0.6 * Math.max(0, Math.sin(audio.flapPhase));
+  n.luff.g.gain.setTargetAtTime(quiet ? 0 : luff * clamp(awsKn / 10, 0, 1.5) * env * 0.45, T, 0.03);
+  n.luff.f.frequency.setTargetAtTime(500 + awsKn * 30, T, 0.20);
+}
+
+const bSound = document.getElementById("bSound"), cVol = document.getElementById("cVol");
+function setSound(on) {
+  if (on) audioStart();                       // must happen inside a user gesture
+  audio.on = on && !!audio.ctx;
+  if (audio.ctx && !audio.on) {               // fade to silence rather than cutting
+    const T = audio.ctx.currentTime, n = audio.nodes;
+    if (n) [n.low.g, n.hi.g, n.luff.g].forEach(g => g.gain.setTargetAtTime(0, T, 0.05));
+  }
+  bSound.textContent = audio.on ? "🔊 Sound on (M)" : "🔇 Sound off (M)";
+  bSound.classList.toggle("sel", audio.on);
+  document.getElementById("volRow").style.display = audio.on ? "" : "none";
+}
+bSound.addEventListener("click", () => setSound(!audio.on));
+cVol.addEventListener("input", () => {
+  audio.vol = Number(cVol.value) / 100;
+  document.getElementById("vVol").textContent = cVol.value + "%";
+  if (audio.nodes) audio.nodes.master.gain.setTargetAtTime(audio.vol, audio.ctx.currentTime, 0.05);
+});
+
 // ---------- controls ----------
 const cTiller = document.getElementById("cTiller"), cMain = document.getElementById("cMain");
 const cJibP = document.getElementById("cJibP"), cJibS = document.getElementById("cJibS");
@@ -1491,6 +1584,7 @@ window.addEventListener("keydown", e => {
   if (k === "p") sim.paused = !sim.paused;
   if (k === "6") { view.mode = view.mode === "top" ? "cockpit" : "top"; updateViewButtons(); }
   if (k === "5") cycleMap();
+  if (k === "m") setSound(!audio.on);          // keydown counts as the audio gesture
   if (k === "h") { view.seat = "port"; updateViewButtons(); }
   if (k === "j") { view.seat = "starboard"; updateViewButtons(); }
   if (k === "c") setLook("port");
@@ -1539,6 +1633,7 @@ function frame(now) {
     else drawCockpit();
     updateInstruments();
     labels();          // working/lazy sheet and tiller-vs-sail text follow the boom
+    updateAudio(dt);
 
   } catch (e) {
     if (frameErrs++ < 3) console.error("frame error:", e);
@@ -1551,7 +1646,7 @@ function frame(now) {
 function fastForward(seconds) { const n = Math.round(seconds / 0.02); for (let i = 0; i < n; i++) step(0.02); }
 window.SIM = { sim, wind, step, fastForward, windPreset, resetSim, setBacked, view, setLook,
                updateViewButtons, weather, fetchLiveWeather, weatherStatusHtml, topView,
-               frame, paintWx };
+               frame, paintWx, audio, setSound, updateAudio };
 
 resize();
 resetSim();
