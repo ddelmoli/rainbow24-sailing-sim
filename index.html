@@ -87,29 +87,33 @@
     <input type="range" id="cTiller" min="-35" max="35" value="0" step="1">
   </div>
   <div class="ctl">
-    <label><span>Mainsheet <b id="vMain">eased</b></span></label>
+    <label><span>Mainsheet <b id="vMain">eased</b></span><span>Q ease · W trim</span></label>
     <input type="range" id="cMain" min="0" max="100" value="70" step="1">
   </div>
   <div class="ctl">
-    <label><span>Jib sheet <b id="vJib">eased</b></span></label>
-    <input type="range" id="cJib" min="0" max="100" value="70" step="1">
+    <label><span>Port jib sheet <b id="vJibP">eased</b></span><span>Y ease · U trim</span></label>
+    <input type="range" id="cJibP" min="0" max="100" value="70" step="1">
+  </div>
+  <div class="ctl">
+    <label><span>Stbd jib sheet <b id="vJibS">eased</b></span><span>O ease · I trim</span></label>
+    <input type="range" id="cJibS" min="0" max="100" value="70" step="1">
   </div>
   <div class="row">
-    <button id="bBack">Back the jib (B)</button>
+    <button id="bBack">Back the jib (Z)</button>
     <button id="bCenter">Center tiller (Space)</button>
   </div>
   <div class="row">
-    <button id="bView">🔭 God's eye (V)</button>
-    <button id="bSeat">Seat: starboard (X)</button>
+    <button id="bView">🔭 God's eye (6)</button>
+    <button id="bSeat">Seat: starboard (H/J)</button>
   </div>
   <div class="row">
-    <button id="bMap">🗺 Map: water (M) — wheel zooms</button>
+    <button id="bMap">🗺 Map: water (5) — wheel zooms</button>
   </div>
   <div class="row">
-    <button id="lookPort">◀ Port (Q)</button>
-    <button id="lookFwd" class="sel">Fwd (F)</button>
-    <button id="lookStbd">Stbd (E) ▶</button>
-    <button id="lookUp">☝ Vane (U)</button>
+    <button id="lookPort">◀ Port (C)</button>
+    <button id="lookFwd" class="sel">Fwd (V)</button>
+    <button id="lookStbd">Stbd (B) ▶</button>
+    <button id="lookUp">☝ Vane (T)</button>
   </div>
   <div class="row">
     <select id="cWxMode">
@@ -135,14 +139,15 @@
   </div>
   <div id="wxStatus">connecting to Thomas Point Light…</div>
 
-  <div id="hint">Sheet in and bear away to get moving. Steer with ← → , trim with W/S (main) and I/K (jib).</div>
+  <div id="hint">Sheet in and bear away to get moving. Steer with ← → , trim the main with Q/W and the jib sheets with Y/U (port) and O/I (starboard).</div>
 
   <div class="keys">
-    <kbd>←</kbd><kbd>→</kbd> tiller &nbsp; <kbd>T</kbd>/<kbd>G</kbd> tiller toward / away from the sail &nbsp; <kbd>space</kbd> center<br>
-    <kbd>W</kbd>/<kbd>S</kbd> trim / ease main &nbsp; <kbd>I</kbd>/<kbd>K</kbd> trim / ease jib<br>
-    <kbd>B</kbd> back the jib (hold) &nbsp; <kbd>P</kbd> pause<br>
-    <kbd>Q</kbd>/<kbd>F</kbd>/<kbd>E</kbd> look port / fwd / stbd &nbsp; <kbd>U</kbd> masthead vane<br>
-    <kbd>V</kbd> cockpit ⇄ god's eye &nbsp; <kbd>X</kbd> switch seat
+    <kbd>←</kbd><kbd>→</kbd> tiller &nbsp; <kbd>F</kbd>/<kbd>G</kbd> tiller toward / away from the sail &nbsp; <kbd>space</kbd> center<br>
+    <kbd>Q</kbd>/<kbd>W</kbd> ease / trim main<br>
+    <kbd>Y</kbd>/<kbd>U</kbd> ease / trim port jib &nbsp; <kbd>O</kbd>/<kbd>I</kbd> ease / trim stbd jib<br>
+    <kbd>Z</kbd> back the jib (hold) &nbsp; <kbd>P</kbd> pause<br>
+    <kbd>C</kbd>/<kbd>V</kbd>/<kbd>B</kbd> look port / fwd / stbd &nbsp; <kbd>T</kbd> masthead vane<br>
+    <kbd>H</kbd>/<kbd>J</kbd> sit port / starboard &nbsp; <kbd>6</kbd> cockpit ⇄ god's eye &nbsp; <kbd>5</kbd> map
   </div>
   <div class="footer">
     <b>NOT FOR NAVIGATION.</b> A training toy: physics are simplified, and charted
@@ -399,8 +404,9 @@ const sim = {
   heel: 0,                    // signed rad, + = heeled to starboard
   tiller: 0,                  // deg, + = tiller to starboard (bow goes port)
   mainSheet: 0.70,            // 0 = block-to-block, 1 = fully eased
-  jibSheet: 0.70,
-  jibBacked: false,
+  jibPort: 0.70,              // the two jib sheets, trimmed independently
+  jibStbd: 0.70,
+  jibBacked: false,           // explicit "hold it aback" (Z)
   boomSide: -1,               // -1 = boom to port (starboard tack)
   paused: false,
   time: 0,
@@ -408,6 +414,15 @@ const sim = {
   lastJibeWarn: -99,
   out: {},                    // per-frame data for rendering / instruments
 };
+
+// The jib is trimmed by whichever sheet is to leeward — the boom's side.
+// The windward sheet is the lazy one; hauling it in backs the sail.
+const leewardJib  = () => (sim.boomSide === -1 ? sim.jibPort : sim.jibStbd);
+const windwardJib = () => (sim.boomSide === -1 ? sim.jibStbd : sim.jibPort);
+function jibTrim()   { return sim.jibBacked ? windwardJib() : leewardJib(); }
+function jibBacking() {                       // aback: held by Z, or windward sheet hauled in
+  return sim.jibBacked || (windwardJib() < 0.35 && leewardJib() > 0.55);
+}
 
 function resetSim() {
   Object.assign(sim, { x: 0, y: 0, psi: 90 * D2R, v: 0, r: 0, heel: 0, tiller: 0, jibBacked: false, boomSide: 1, time: 0, wake: [] });
@@ -459,7 +474,8 @@ function step(dt) {
     return { Ff, Fs, alpha, boomAng };
   }
   const main = sailForce(BOAT.mainArea, sim.mainSheet, 4, 80, false);
-  const jib  = sailForce(BOAT.jibArea, sim.jibSheet, 8, 85, sim.jibBacked);
+  const jibBack = jibBacking();
+  const jib  = sailForce(BOAT.jibArea, jibTrim(), 8, 85, jibBack);
 
   // heel reduces drive
   const heelEff = Math.pow(Math.cos(sim.heel), 1.3);
@@ -476,9 +492,9 @@ function step(dt) {
   const drag = BOAT.dragC * sim.v * Math.abs(sim.v) * wave;
   let dv = (Ffwd - drag) / BOAT.mass;
   // gentle sternway when parked head-to-wind with sails luffing
-  if (Math.abs(sim.v) < 0.35 && main.alpha < 4 && jib.alpha < 4 && !sim.jibBacked && awaAbs < 30)
+  if (Math.abs(sim.v) < 0.35 && main.alpha < 4 && jib.alpha < 4 && !jibBack && awaAbs < 30)
     dv -= 0.045;
-  if (sim.jibBacked && Math.abs(sim.v) < 0.6) dv -= 0.03;       // backed jib pushes you aft too
+  if (jibBack && Math.abs(sim.v) < 0.6) dv -= 0.03;             // backed jib pushes you aft too
   sim.v = clamp(sim.v + dv * dt, -0.6, 4.2);
 
   // ---- yaw ----
@@ -486,7 +502,7 @@ function step(dt) {
   const Twh = 1400 * Math.abs(sim.heel) * Math.sign(awa || 0)   // weather helm: turn toward wind
             + 0.15 * (Math.abs(main.Fs) - Math.abs(jib.Fs)) * Math.sign(awa || 0);
   let Tback = 0;
-  if (sim.jibBacked && aws > 0.5 && awaAbs < 60)
+  if (jibBack && aws > 0.5 && awaAbs < 60)
     Tback = -Math.sign(awa || sim.boomSide) * 30 * aws * aws;
   const Tdamp = -BOAT.keelYawDamp * sim.r * (1 + Math.abs(sim.v));
   sim.r += (Trud + Twh + Tback + Tdamp) / BOAT.yawInertia * dt;
@@ -548,7 +564,7 @@ function autoHint() {
   const twaD = Math.abs(o.twa) * R2D, vKn = sim.v * KN;
   let msg = "";
   if (twaD < 32 && vKn < 0.6)
-    msg = "In irons — hold B to back the jib and reverse the tiller as you gather sternway, or wait and steer off as the bow falls away.";
+    msg = "In irons — haul in the windward jib sheet (or hold Z) to back the jib, and reverse the tiller as you gather sternway.";
   else if (o.jib.alpha < 6 && o.main.alpha < 6 && twaD > 40)
     msg = "Both sails are luffing — sheet in until the luffing just stops.";
   else if (o.jib.alpha > 34 && twaD < 110)
@@ -729,7 +745,7 @@ function drawBoat(cx, cy) {
   // sails (draw from mast slightly fwd of center)
   const mastY = -L * 0.10;
   const mainAng = (o.main ? o.main.boomAng : 20) * D2R * (sim.boomSide);
-  const jibSide = sim.jibBacked ? -sim.boomSide : sim.boomSide;
+  const jibSide = jibBacking() ? -sim.boomSide : sim.boomSide;
   const jibAngRaw = (o.jib ? Math.abs(o.jib.boomAng) : 25);
   const jibAng = jibAngRaw * D2R * jibSide;
   // main
@@ -821,7 +837,7 @@ function drawSailPanel() {
   panelLabel(8, 16, "JIB — luff telltales");
   const jx = 60, jy = 40, chord = 190;
   const jibAng = clamp((o.jib.boomAng < 0 ? 30 : o.jib.boomAng), 0, 90) * D2R * 0.55;
-  pctx.save(); pctx.translate(jx, jy + 60); pctx.rotate(jibAng * (sim.jibBacked ? -1 : 1) * 0.8);
+  pctx.save(); pctx.translate(jx, jy + 60); pctx.rotate(jibAng * (jibBacking() ? -1 : 1) * 0.8);
   pctx.strokeStyle = "#fff"; pctx.lineWidth = 2.5;
   pctx.beginPath(); pctx.moveTo(0, 0); pctx.quadraticCurveTo(chord * 0.45, -26, chord, -8); pctx.stroke();
   // windward telltale (upper/near side), leeward (drawn below chord)
@@ -886,7 +902,7 @@ function legend(x, y, color, label) {
 }
 function jibTrimText(a) {
   if (!sim.out.aws || sim.out.aws < 0.8) return "no wind";
-  if (sim.jibBacked) return "BACKED";
+  if (jibBacking()) return "BACKED";
   if (a < 6) return "luffing — trim in / bear away";
   if (a < 9) return "slightly soft";
   if (a <= 28) return "in the groove ✓";
@@ -1135,7 +1151,7 @@ function drawCockpit() {
   const bs = sim.boomSide;                                 // -1 = boom to port
   const bAng = clamp(o.main.boomAng < 0 ? 25 : o.main.boomAng, 3, 85) * D2R;
   const boomEnd = { x: 0.6 - 3.05 * Math.cos(bAng), y: bs * 3.05 * Math.sin(bAng), z: 1.62 };
-  const js = sim.jibBacked ? -bs : bs;
+  const js = jibBacking() ? -bs : bs;
   const jAng = clamp(Math.abs(o.jib.boomAng), 5, 90) * D2R;
   const jTack = { x: 3.45, y: 0, z: 0.8 };
   const jHead = { x: 1.19, y: 0, z: 6.85 };
@@ -1366,8 +1382,8 @@ function drawCockpit() {
 // ---------- view controls ----------
 const bView = document.getElementById("bView"), bSeat = document.getElementById("bSeat");
 function updateViewButtons() {
-  bView.textContent = view.mode === "top" ? "⛵ Cockpit view (V)" : "🔭 God's eye (V)";
-  bSeat.textContent = "Seat: " + view.seat + " (X)";
+  bView.textContent = view.mode === "top" ? "⛵ Cockpit view (6)" : "🔭 God's eye (6)";
+  bSeat.textContent = "Seat: " + view.seat + " (H/J)";
   sails.style.display = view.mode === "top" ? "" : "none";   // telltale panel only in god's eye
   for (const [id, lk] of [["lookPort","port"],["lookFwd","forward"],["lookStbd","starboard"],["lookUp","up"]])
     document.getElementById(id).classList.toggle("sel", view.look === lk);
@@ -1376,7 +1392,7 @@ function setLook(lk) { view.look = view.look === lk && lk !== "forward" ? "forwa
 const bMap = document.getElementById("bMap");
 function cycleMap() {
   topView.source = topView.source === "water" ? "sat" : topView.source === "sat" ? "chart" : "water";
-  bMap.textContent = "🗺 Map: " + (topView.source === "water" ? "water" : topView.source === "sat" ? "satellite (Esri)" : "nautical chart (OSM)") + " (M) — wheel zooms";
+  bMap.textContent = "🗺 Map: " + (topView.source === "water" ? "water" : topView.source === "sat" ? "satellite (Esri)" : "nautical chart (OSM)") + " (5) — wheel zooms";
 }
 bMap.addEventListener("click", cycleMap);
 sea.addEventListener("wheel", e => {
@@ -1406,11 +1422,13 @@ function updateInstruments() {
 }
 
 // ---------- controls ----------
-const cTiller = document.getElementById("cTiller"), cMain = document.getElementById("cMain"), cJib = document.getElementById("cJib");
+const cTiller = document.getElementById("cTiller"), cMain = document.getElementById("cMain");
+const cJibP = document.getElementById("cJibP"), cJibS = document.getElementById("cJibS");
 function syncSliders() {
   cTiller.value = sim.tiller;
   cMain.value = Math.round(sim.mainSheet * 100);
-  cJib.value = Math.round(sim.jibSheet * 100);
+  cJibP.value = Math.round(sim.jibPort * 100);
+  cJibS.value = Math.round(sim.jibStbd * 100);
   labels();
 }
 function labels() {
@@ -1419,12 +1437,18 @@ function labels() {
     Math.abs(tl) + "° " + (tl > 0 ? "stbd" : "port") + " · " +
     (Math.sign(tl) === sim.boomSide ? "toward sail" : "away from sail");
   document.getElementById("vMain").textContent = sheetWord(sim.mainSheet);
-  document.getElementById("vJib").textContent = sim.jibBacked ? "BACKED" : sheetWord(sim.jibSheet);
+  // mark which sheet is working (leeward) and flag a backed jib
+  const backed = jibBacking(), leeIsPort = sim.boomSide === -1;
+  const tag = (mine, val) => (backed && mine !== leeIsPort ? "BACKED" : sheetWord(val))
+                           + (mine === leeIsPort ? " · working" : " · lazy");
+  document.getElementById("vJibP").textContent = tag(true, sim.jibPort);
+  document.getElementById("vJibS").textContent = tag(false, sim.jibStbd);
 }
 function sheetWord(s) { return s < 0.15 ? "hard in" : s < 0.4 ? "trimmed" : s < 0.7 ? "eased" : "well eased"; }
 cTiller.addEventListener("input", () => { sim.tiller = Number(cTiller.value); labels(); });
 cMain.addEventListener("input", () => { sim.mainSheet = Number(cMain.value) / 100; labels(); });
-cJib.addEventListener("input", () => { sim.jibSheet = Number(cJib.value) / 100; labels(); });
+cJibP.addEventListener("input", () => { sim.jibPort = Number(cJibP.value) / 100; labels(); });
+cJibS.addEventListener("input", () => { sim.jibStbd = Number(cJibS.value) / 100; labels(); });
 document.getElementById("bCenter").addEventListener("click", () => { sim.tiller = 0; syncSliders(); });
 document.getElementById("bReset").addEventListener("click", resetSim);
 document.getElementById("cWind").addEventListener("change", e => {
@@ -1460,33 +1484,38 @@ bBack.addEventListener("mouseleave", () => setBacked(false));
 const held = {};
 window.addEventListener("keydown", e => {
   if (["ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
-  held[e.key.toLowerCase()] = true;
-  if (e.key === " ") { sim.tiller = 0; syncSliders(); }
   const k = e.key.toLowerCase();
-  if (k === "b") setBacked(true);
+  held[k] = true;
+  if (e.key === " ") { sim.tiller = 0; syncSliders(); }
+  if (k === "z") setBacked(true);                                  // hold to hold it aback
   if (k === "p") sim.paused = !sim.paused;
-  if (k === "v") { view.mode = view.mode === "top" ? "cockpit" : "top"; updateViewButtons(); }
-  if (k === "x") { view.seat = view.seat === "starboard" ? "port" : "starboard"; updateViewButtons(); }
-  if (k === "q") setLook("port");
-  if (k === "e") setLook("starboard");
-  if (k === "f") setLook("forward");
-  if (k === "u") setLook("up");
-  if (k === "m") cycleMap();
+  if (k === "6") { view.mode = view.mode === "top" ? "cockpit" : "top"; updateViewButtons(); }
+  if (k === "5") cycleMap();
+  if (k === "h") { view.seat = "port"; updateViewButtons(); }
+  if (k === "j") { view.seat = "starboard"; updateViewButtons(); }
+  if (k === "c") setLook("port");
+  if (k === "v") setLook("forward");
+  if (k === "b") setLook("starboard");
+  if (k === "t") setLook("up");
 });
 window.addEventListener("keyup", e => {
-  held[e.key.toLowerCase()] = false;
-  if (e.key.toLowerCase() === "b") setBacked(false);
+  const k = e.key.toLowerCase();
+  held[k] = false;
+  if (k === "z") setBacked(false);
 });
 function pollKeys(dt) {
   const tr = 42 * dt, sr = 0.5 * dt;
-  if (held["arrowleft"]) { sim.tiller = clamp(sim.tiller - tr, -35, 35); syncSliders(); }
+  // sheet values: 0 = hard in (trimmed), 1 = fully eased
+  if (held["arrowleft"])  { sim.tiller = clamp(sim.tiller - tr, -35, 35); syncSliders(); }
   if (held["arrowright"]) { sim.tiller = clamp(sim.tiller + tr, -35, 35); syncSliders(); }
-  if (held["t"]) { sim.tiller = clamp(sim.tiller + sim.boomSide * tr, -35, 35); syncSliders(); }  // toward the sail
+  if (held["f"]) { sim.tiller = clamp(sim.tiller + sim.boomSide * tr, -35, 35); syncSliders(); }  // toward the sail
   if (held["g"]) { sim.tiller = clamp(sim.tiller - sim.boomSide * tr, -35, 35); syncSliders(); }  // away from the sail
-  if (held["w"]) { sim.mainSheet = clamp(sim.mainSheet - sr, 0, 1); syncSliders(); }
-  if (held["s"]) { sim.mainSheet = clamp(sim.mainSheet + sr, 0, 1); syncSliders(); }
-  if (held["i"]) { sim.jibSheet = clamp(sim.jibSheet - sr, 0, 1); syncSliders(); }
-  if (held["k"]) { sim.jibSheet = clamp(sim.jibSheet + sr, 0, 1); syncSliders(); }
+  if (held["q"]) { sim.mainSheet = clamp(sim.mainSheet + sr, 0, 1); syncSliders(); }              // ease main
+  if (held["w"]) { sim.mainSheet = clamp(sim.mainSheet - sr, 0, 1); syncSliders(); }              // trim main
+  if (held["y"]) { sim.jibPort = clamp(sim.jibPort + sr, 0, 1); syncSliders(); }                  // ease port jib
+  if (held["u"]) { sim.jibPort = clamp(sim.jibPort - sr, 0, 1); syncSliders(); }                  // trim port jib
+  if (held["o"]) { sim.jibStbd = clamp(sim.jibStbd + sr, 0, 1); syncSliders(); }                  // ease stbd jib
+  if (held["i"]) { sim.jibStbd = clamp(sim.jibStbd - sr, 0, 1); syncSliders(); }                  // trim stbd jib
 }
 
 // ---------- main loop ----------
@@ -1509,6 +1538,8 @@ function frame(now) {
     if (view.mode === "top") { drawSea(); drawSailPanel(); }
     else drawCockpit();
     updateInstruments();
+    labels();          // working/lazy sheet and tiller-vs-sail text follow the boom
+
   } catch (e) {
     if (frameErrs++ < 3) console.error("frame error:", e);
     if (frameErrs === 3) console.error("(further frame errors suppressed)");

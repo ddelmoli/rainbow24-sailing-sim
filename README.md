@@ -37,18 +37,23 @@ Each one streams, flutters, stalls, or hangs limp based on the sail's actual ang
 
 | Key | Action |
 | --- | --- |
-| `←` `→` | Tiller (bow turns opposite) |
-| `T` / `G` | Tiller toward / away from the sail |
+| `←` `→` | Tiller, absolute — bow turns opposite |
+| `F` / `G` | Tiller toward / away from the sail (flips automatically when the boom crosses) |
 | `space` | Center the tiller |
-| `W` / `S` | Trim / ease the mainsheet |
-| `I` / `K` | Trim / ease the jib sheet |
-| `B` | Back the jib (hold) |
-| `Q` `F` `E` | Look port / forward / starboard |
-| `U` | Look up at the masthead vane |
-| `V` | Cockpit ⇄ god's eye |
-| `X` | Switch cockpit seat |
-| `M` | Cycle god's-eye map (water / satellite / chart) |
+| `Q` / `W` | Ease / trim the mainsheet |
+| `Y` / `U` | Ease / trim the **port** jib sheet |
+| `O` / `I` | Ease / trim the **starboard** jib sheet |
+| `Z` | Back the jib (hold) |
+| `H` / `J` | Sit port / starboard |
+| `C` `V` `B` | Look port / forward / starboard |
+| `T` | Look up at the masthead vane |
+| `6` | Cockpit ⇄ god's eye |
+| `5` | Cycle god's-eye map (water / satellite / chart) — wheel zooms |
 | `P` | Pause |
+
+### Two jib sheets
+
+The jib is trimmed by two independent sheets, as on the boat. Whichever one is to **leeward** is the working sheet and sets the sail's trim; the windward one lies lazy. Haul the windward sheet in while the leeward one is eased and the jib goes **aback** — which is how you back the jib to steer out of irons, and also what happens if you forget to release the old sheet during a tack. The sidebar labels each sheet *working* or *lazy* and warns when the sail is backed.
 
 ## Running it
 
