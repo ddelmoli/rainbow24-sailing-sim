@@ -56,7 +56,7 @@ Each one streams, flutters, stalls, or hangs limp based on the sail's actual ang
 
 Off by default; press `M` or the sound button to start it (browsers require a click or keypress before any audio can play). Everything is synthesized with the Web Audio API — there are no sound files to download, and it still works offline.
 
-The soundscape follows **apparent** wind, not true wind, so the rig audibly builds as the boat accelerates and softens as you bear away — the same cue you get on the water. Three layers: the low body of the wind, the higher hiss through the rig, and canvas flogging when a sail luffs, which flaps faster and louder as the breeze gets up. Head into the wind and you'll hear both sails break before you see them.
+The soundscape follows **apparent** wind, not true wind — so it is loudest close-hauled, where boat speed and true wind add together, and drops away as you bear off, going quietest on a run where you are sailing with the air mass. In 12 knots of true wind that spans roughly 15 knots apparent upwind down to 8 on a run: about a 9 dB swing, with the hiss through the rig falling several hundred Hz alongside it. Note that it tracks *heading*, not boat speed — a beam reach is the fastest point of sail but is quieter than close-hauled. Three layers: the low body of the wind, the higher hiss through the rig, and canvas flogging when a sail luffs, which flaps faster and louder as the breeze gets up. Head into the wind and you'll hear both sails break before you see them.
 
 ### Two jib sheets
 
