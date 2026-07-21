@@ -1,0 +1,1524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rainbow 24 Sailing Simulator</title>
+<style>
+  :root {
+    --navy: #0b2545; --navy-light: #13315c; --blue: #2274a5; --sky: #8da9c4;
+    --cream: #eef4ed; --gold: #e8b04b; --green: #2e8b57; --red: #c0392b;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--navy); color: var(--cream); display: flex;
+  }
+  #sea { flex: 1; display: block; cursor: crosshair; }
+  #side {
+    width: 330px; min-width: 330px; background: var(--navy);
+    border-left: 2px solid rgba(255,255,255,0.15);
+    padding: 12px 14px; overflow-y: auto; font-size: 0.85rem;
+  }
+  #side h1 { font-size: 1.05rem; margin-bottom: 2px; }
+  #side .sub { color: var(--sky); font-size: 0.72rem; margin-bottom: 10px; }
+  .instr {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px;
+    background: rgba(255,255,255,0.07); border-radius: 8px; padding: 8px 10px; margin-bottom: 10px;
+  }
+  .instr div { display: flex; justify-content: space-between; }
+  .instr .lbl { color: var(--sky); }
+  .instr .val { font-weight: 700; font-variant-numeric: tabular-nums; }
+  #posLabel { grid-column: 1 / -1; text-align: center; color: var(--gold); font-weight: 700; letter-spacing: 0.5px; }
+  #sails { width: 100%; background: rgba(255,255,255,0.05); border-radius: 8px; margin-bottom: 10px; }
+  .ctl { margin-bottom: 8px; }
+  .ctl label { display: flex; justify-content: space-between; color: var(--sky); font-size: 0.75rem; margin-bottom: 2px; }
+  .ctl label b { color: var(--cream); }
+  .ctl input[type=range] { width: 100%; accent-color: var(--gold); }
+  .row { display: flex; gap: 8px; margin-bottom: 8px; }
+  button, select {
+    background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.25);
+    color: var(--cream); padding: 6px 10px; border-radius: 7px; font-size: 0.8rem; cursor: pointer; flex: 1;
+  }
+  button:hover { background: rgba(255,255,255,0.2); }
+  button.active { background: var(--red); border-color: var(--red); font-weight: 700; }
+  button.sel { background: var(--gold); border-color: var(--gold); color: var(--navy); font-weight: 700; }
+  select option { color: #222; }
+  #wxStatus {
+    background: rgba(109,179,232,0.12); border-left: 3px solid #6db3e8;
+    border-radius: 6px; padding: 5px 9px; font-size: 0.72rem; line-height: 1.45;
+    margin-bottom: 8px; color: #cfe4f5; min-height: 30px;
+  }
+  #wxStatus b { color: #fff; }
+  #wxStatus .stale { color: #f2b8b0; }
+  #hint {
+    min-height: 38px; background: rgba(232,176,75,0.12); border-left: 3px solid var(--gold);
+    border-radius: 6px; padding: 6px 9px; font-size: 0.76rem; line-height: 1.4; margin-bottom: 8px; color: #f4e8cf;
+  }
+  .keys { color: var(--sky); font-size: 0.68rem; line-height: 1.8; }
+  kbd {
+    background: rgba(255,255,255,0.12); border: 1px solid rgba(255,255,255,0.25);
+    border-radius: 4px; padding: 0 5px; font-size: 0.66rem; font-family: inherit;
+  }
+  .footer { margin-top: 10px; font-size: 0.62rem; color: var(--sky); line-height: 1.5; }
+</style>
+</head>
+<body>
+<canvas id="sea"></canvas>
+<div id="side">
+  <h1>⛵ Rainbow 24 Simulator</h1>
+  <div class="sub">S&amp;S Rainbow 24 · 24 ft · 2,250 lb · Annapolis Roads</div>
+
+  <div class="instr">
+    <div id="posLabel">—</div>
+    <div><span class="lbl">Boat speed</span><span class="val" id="iSpd">0.0 kn</span></div>
+    <div><span class="lbl">Heading</span><span class="val" id="iHdg">000°</span></div>
+    <div><span class="lbl">True wind</span><span class="val" id="iTW">— kn</span></div>
+    <div><span class="lbl">Apparent</span><span class="val" id="iAW">— kn</span></div>
+    <div><span class="lbl">AWA</span><span class="val" id="iAWA">—</span></div>
+    <div><span class="lbl">Heel</span><span class="val" id="iHeel">0°</span></div>
+  </div>
+
+  <canvas id="sails" width="300" height="430"></canvas>
+
+  <div class="ctl">
+    <label><span>Tiller <b id="vTiller">centered</b></span><span>(bow turns opposite)</span></label>
+    <input type="range" id="cTiller" min="-35" max="35" value="0" step="1">
+  </div>
+  <div class="ctl">
+    <label><span>Mainsheet <b id="vMain">eased</b></span></label>
+    <input type="range" id="cMain" min="0" max="100" value="70" step="1">
+  </div>
+  <div class="ctl">
+    <label><span>Jib sheet <b id="vJib">eased</b></span></label>
+    <input type="range" id="cJib" min="0" max="100" value="70" step="1">
+  </div>
+  <div class="row">
+    <button id="bBack">Back the jib (B)</button>
+    <button id="bCenter">Center tiller (Space)</button>
+  </div>
+  <div class="row">
+    <button id="bView">🔭 God's eye (V)</button>
+    <button id="bSeat">Seat: starboard (X)</button>
+  </div>
+  <div class="row">
+    <button id="bMap">🗺 Map: water (M) — wheel zooms</button>
+  </div>
+  <div class="row">
+    <button id="lookPort">◀ Port (Q)</button>
+    <button id="lookFwd" class="sel">Fwd (F)</button>
+    <button id="lookStbd">Stbd (E) ▶</button>
+    <button id="lookUp">☝ Vane (U)</button>
+  </div>
+  <div class="row">
+    <select id="cWxMode">
+      <option value="live" selected>🛰 Weather: real-time</option>
+      <option value="sim">🎚 Weather: simulated</option>
+      <option value="random">🎲 Weather: random</option>
+    </select>
+    <button id="bReset">↺ Reset</button>
+  </div>
+  <div id="simWx">
+    <div class="row">
+      <select id="cWind">
+        <option value="6">Light — 6 kn</option>
+        <option value="12" selected>Moderate — 12 kn</option>
+        <option value="16">Fresh — 16 kn</option>
+        <option value="20">Gusty — 20 kn</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <label><span>Wind from <b id="vWdir">000°</b></span><span>true</span></label>
+      <input type="range" id="cWdir" min="0" max="359" value="0" step="1">
+    </div>
+  </div>
+  <div id="wxStatus">connecting to Thomas Point Light…</div>
+
+  <div id="hint">Sheet in and bear away to get moving. Steer with ← → , trim with W/S (main) and I/K (jib).</div>
+
+  <div class="keys">
+    <kbd>←</kbd><kbd>→</kbd> tiller &nbsp; <kbd>T</kbd>/<kbd>G</kbd> tiller toward / away from the sail &nbsp; <kbd>space</kbd> center<br>
+    <kbd>W</kbd>/<kbd>S</kbd> trim / ease main &nbsp; <kbd>I</kbd>/<kbd>K</kbd> trim / ease jib<br>
+    <kbd>B</kbd> back the jib (hold) &nbsp; <kbd>P</kbd> pause<br>
+    <kbd>Q</kbd>/<kbd>F</kbd>/<kbd>E</kbd> look port / fwd / stbd &nbsp; <kbd>U</kbd> masthead vane<br>
+    <kbd>V</kbd> cockpit ⇄ god's eye &nbsp; <kbd>X</kbd> switch seat
+  </div>
+  <div class="footer">
+    <b>NOT FOR NAVIGATION.</b> A training toy: physics are simplified, and charted
+    features, depths, and aids to navigation are incomplete and may be out of date.
+    Never use this for real-world piloting — carry current official charts.<br><br>
+    Unofficial trainer inspired by ASA 101 skills; not affiliated with the American
+    Sailing Association, Sparkman &amp; Stephens, or Tidewater Boats. Aid positions from
+    NOAA ENC Direct · live wind from NWS / Open-Meteo · imagery Esri ·
+    chart tiles © OpenStreetMap contributors &amp; OpenSeaMap.
+  </div>
+</div>
+
+<script>
+"use strict";
+// ==========================================================
+// Rainbow 24 — simplified sailing physics (top-down, 2D + heel)
+// Units: meters, seconds, radians internally; knots/degrees on display.
+// ==========================================================
+const KN = 1.94384;           // m/s -> knots
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+
+const BOAT = {
+  mass: 1400,                 // kg incl. crew + added hydrodynamic mass
+  hullSpeed: 2.88,            // m/s (~5.6 kn for 17'3" LWL)
+  mainArea: 10.1,             // m^2 (P*E/2 = 21.7*10/2 ft^2)
+  jibArea: 10.0,              // m^2 (I*J/2 = 25*8.6/2 ft^2)
+  dragC: 38,                  // base hull drag coefficient
+  yawInertia: 2600,
+  rudderPow: 1000,
+  keelYawDamp: 3400,
+};
+
+function wrapPi(a) { while (a > Math.PI) a -= 2 * Math.PI; while (a < -Math.PI) a += 2 * Math.PI; return a; }
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+// ==========================================================
+// Annapolis geography — georeferenced. Origin = Annapolis Roads
+// (38.9600 N, 76.4500 W). World meters: x = east, y = north.
+// X = (lon + 76.45) * 86600 ; Y = (lat - 38.96) * 111130
+// Shorelines traced from the chart; aid positions from NOAA
+// ENC Direct (the ENC behind chart 12283).
+// ==========================================================
+const SHORELINES = [
+  { // Bay Ridge → Tolly Point → Annapolis Roads → Horn Point → Eastport
+    pts: [[-519,-3000],[433,-2000],[-173,-1334],[-1039,-778],[-1559,-334],[-1732,111],[-1602,611],[-2078,1000],[-2511,1111]],
+    h: 12, color: "#7c8a70" },
+  { // Annapolis city dock → Naval Academy seawall → into the Severn → bridge
+    pts: [[-2858,1611],[-3074,1889],[-2598,2223],[-2295,2645],[-2814,2912],[-3464,3112],[-3767,3223]],
+    h: 10, color: "#7c8a70" },
+  { // NE bank: bridge → Greenbury Point → Whitehall Bay → Hackett Pt → Sandy Pt
+    pts: [[-3291,3645],[-2511,3278],[-1515,2834],[-779,2278],[-303,1723],[-87,1334],[433,1612],[650,2223],[953,2945],[1732,3334],[2598,2945],[3118,1334],[3551,1778],[3897,3334],[4070,5335],[4416,6112]],
+    h: 13, color: "#82907a" },
+  { // Kent Island — the far eastern shore, hazy with distance
+    pts: [[10478,4445],[10738,2223],[10392,0],[9526,-2223]], h: 9, color: "#a9b7bd" },
+];
+const LANDMARKS_TAPE = [
+  { label: "USNA", x: -2900, y: 2500 },
+  { label: "Severn Br", x: -3530, y: 3420 },
+  { label: "Greenbury Pt", x: -87, y: 1334 },
+  { label: "Radio Twrs", x: 520, y: 1950 },
+  { label: "Bay Br", x: 7300, y: 4950 },
+];
+// Navigation aids from ENC US5MD11M (NOAA chart 12283). Kinds:
+// can = green can, nun = red nun, pG/pR = lighted pillar buoy,
+// bG/bR = pile beacon with dayboard, jGRG = junction can, lt = Triton Light
+const NAVAIDS = [
+  { n:"1AH", k:"bG", x:1203,  y:-2686 }, { n:"2",  k:"pR", x:2069,  y:-2021 },
+  { n:"4",   k:"bR", x:-667,  y:931 },   { n:"5",  k:"pG", x:-1046, y:1291 },
+  { n:"6",   k:"pR", x:-1119, y:1636 },  { n:"7",  k:"can", x:-1315, y:1865 },
+  { n:"8",   k:"nun", x:-1302, y:2024 }, { n:"9",  k:"pG", x:-1463, y:2044 },
+  { n:"13",  k:"can", x:-2036, y:2459 }, { n:"14", k:"nun", x:-2405, y:2876 },
+  { n:"SC",  k:"jGRG", x:-1612, y:2132 },{ n:"1SC", k:"can", x:-2595, y:1825 },
+  { n:"Triton", k:"lt", x:-2270, y:2377 },
+  { n:"1E",  k:"bG", x:-1660, y:656 },   { n:"2E", k:"bR", x:-1798, y:868 },
+  { n:"1L",  k:"bG", x:-668,  y:-868 },  { n:"2",  k:"bR", x:-834,  y:-1026 },
+  { n:"2W",  k:"bR", x:1046,  y:2983 },  { n:"1",  k:"can", x:3071, y:1110 },
+  { n:"WR87", k:"pG", x:4985, y:-3021 }, { n:"88", k:"pR", x:5873,  y:-2718 },
+  { n:"90",  k:"pR", x:5317,  y:1313 },  { n:"91", k:"pG", x:5375,  y:2565 },
+  { n:"92",  k:"pR", x:5664,  y:2465 },  { n:"93", k:"pG", x:5948,  y:4541 },
+];
+const GE_LAND = [
+  { color: "#6f7d64", pts: [[-519,-3000],[433,-2000],[-173,-1334],[-1039,-778],[-1559,-334],[-1732,111],[-1602,611],[-2078,1000],[-2511,1111],[-2858,1611],[-3074,1889],[-2598,2223],[-2295,2645],[-2814,2912],[-3464,3112],[-3767,3223],[-6500,3400],[-6500,-3400]] },
+  { color: "#6f7d64", pts: [[-3291,3645],[-2511,3278],[-1515,2834],[-779,2278],[-303,1723],[-87,1334],[433,1612],[650,2223],[953,2945],[1732,3334],[2598,2945],[3118,1334],[3551,1778],[3897,3334],[4070,5335],[4416,6112],[3000,6600],[0,5400],[-2500,4400]] },
+  { color: "#9aa8ad", pts: [[10478,4445],[10738,2223],[10392,0],[9526,-2223],[12800,-2300],[12800,4600]] },
+];
+
+// ---------- wind field ----------
+const wind = {
+  base: 12 / KN,              // m/s
+  gustiness: 0.18,
+  dir: 0,                     // radians, direction wind blows FROM (0 = north)
+  t: 0,
+  puffs: [],
+};
+function windPreset(kn) {
+  wind.base = kn / KN;
+  wind.gustiness = kn >= 20 ? 0.32 : kn >= 16 ? 0.24 : kn >= 12 ? 0.18 : 0.12;
+}
+
+// ==========================================================
+// Weather modes: live observations / simulated / random
+// ==========================================================
+const weather = {
+  mode: "live",              // "live" | "sim" | "random"
+  source: "", obsTime: null, obsKn: 0, obsDir: 0, gustKn: null,
+  fetching: false, lastFetch: -1e9, failed: false, note: "",
+  rNextShift: 0, rTargetSpd: 12 / KN, rTargetDir: 0, rTrend: "steady",
+};
+const LIVE_REFRESH_S = 600;                       // re-check the station every 10 minutes
+
+function paintWx() {
+  const el = document.getElementById("wxStatus");
+  if (el) el.innerHTML = weatherStatusHtml();
+}
+
+function applyObservation(kn, dirDeg, gustKn, source, timeIso) {
+  weather.obsKn = kn; weather.obsDir = dirDeg; weather.gustKn = gustKn;
+  weather.source = source; weather.obsTime = timeIso; weather.failed = false;
+  wind.base = Math.max(kn, 0.5) / KN;
+  wind.dir = dirDeg * D2R;
+  // gust factor drives how puffy it feels; fall back to a typical Bay value
+  wind.gustiness = gustKn && gustKn > kn
+    ? clamp((gustKn - kn) / Math.max(kn, 2) * 0.85, 0.08, 0.45)
+    : 0.16;
+}
+
+async function fetchLiveWeather() {
+  if (weather.fetching) return;
+  weather.fetching = true;
+  // 1) Thomas Point Light (TPLM2) — the station right off Annapolis
+  try {
+    const r = await fetch("https://api.weather.gov/stations/TPLM2/observations/latest",
+                          { headers: { Accept: "application/geo+json" } });
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const p = (await r.json()).properties;
+    const dir = p.windDirection && p.windDirection.value;
+    const spd = p.windSpeed && p.windSpeed.value;            // km/h
+    if (dir == null || spd == null) throw new Error("no wind in observation");
+    const gust = p.windGust && p.windGust.value;
+    applyObservation(spd / 1.852, dir, gust ? gust / 1.852 : null,
+                     "Thomas Point Light (TPLM2)", p.timestamp);
+    weather.note = ""; weather.lastFetch = sim.time; weather.fetching = false; paintWx();
+    return true;
+  } catch (e1) {
+    // 2) Open-Meteo model data for Annapolis Roads
+    try {
+      const r = await fetch("https://api.open-meteo.com/v1/forecast?latitude=38.96&longitude=-76.45"
+        + "&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&wind_speed_unit=kn");
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const c = (await r.json()).current;
+      applyObservation(c.wind_speed_10m, c.wind_direction_10m, c.wind_gusts_10m,
+                       "Open-Meteo · Annapolis", c.time + "Z");
+      weather.note = "station unavailable — using model data";
+      weather.lastFetch = sim.time; weather.fetching = false; paintWx();
+      return true;
+    } catch (e2) {
+      weather.failed = true; weather.lastFetch = sim.time; weather.fetching = false;
+      weather.note = "no connection — holding last conditions";
+      paintWx();
+      return false;
+    }
+  }
+}
+
+function updateRandomWeather(dt) {
+  if (sim.time > weather.rNextShift) {             // pick a new target every 40–120 s
+    weather.rNextShift = sim.time + 40 + Math.random() * 80;
+    const prev = weather.rTargetSpd;
+    weather.rTargetSpd = (4 + Math.random() * 18) / KN;
+    weather.rTargetDir = wind.dir + (Math.random() - 0.5) * 70 * D2R;
+    weather.rTrend = weather.rTargetSpd > prev * 1.15 ? "building"
+                   : weather.rTargetSpd < prev * 0.85 ? "easing" : "steady";
+    wind.gustiness = 0.1 + Math.random() * 0.3;
+  }
+  const k = Math.min(dt * 0.06, 1);                // ease toward the target
+  wind.base += (weather.rTargetSpd - wind.base) * k;
+  wind.dir += wrapPi(weather.rTargetDir - wind.dir) * k;
+}
+
+function stepWeather(dt) {
+  if (weather.mode === "live") {
+    if (sim.time - weather.lastFetch > LIVE_REFRESH_S) fetchLiveWeather();
+  } else if (weather.mode === "random") {
+    updateRandomWeather(dt);
+  }
+}
+
+function weatherStatusHtml() {
+  const kn = (wind.base * KN).toFixed(0), dir = Math.round(((wind.dir * R2D) % 360 + 360) % 360);
+  const dirTxt = String(dir).padStart(3, "0") + "°";
+  if (weather.mode === "sim")
+    return `🎚 <b>Simulated</b> — ${kn} kn from ${dirTxt}. Set speed and direction above.`;
+  if (weather.mode === "random")
+    return `🎲 <b>Random</b> — now ${kn} kn from ${dirTxt}, <b>${weather.rTrend}</b>.`
+         + ` Shifts every minute or two; watch the vane.`;
+  if (weather.fetching && !weather.source) return "🛰 contacting Thomas Point Light…";
+  if (weather.failed && !weather.source)
+    return `<span class="stale">🛰 Real-time unavailable (offline?) — sailing on ${kn} kn from ${dirTxt}.</span>`;
+  let age = "";
+  if (weather.obsTime) {
+    const mins = Math.round((Date.now() - new Date(weather.obsTime).getTime()) / 60000);
+    age = mins < 90 ? ` · ${mins} min ago` : ` · ${new Date(weather.obsTime).toUTCString().slice(17, 22)}Z`;
+  }
+  const gust = weather.gustKn ? `, gusting ${weather.gustKn.toFixed(0)}` : "";
+  return `🛰 <b>Live: ${weather.obsKn.toFixed(0)} kn${gust} from ${String(Math.round(weather.obsDir)).padStart(3,"0")}°</b>`
+       + `<br>${weather.source}${age}`
+       + (weather.note ? `<br><span class="stale">${weather.note}</span>` : "");
+}
+function makePuff(nearBoat) {
+  const a = wind.dir + (Math.random() - 0.5) * 0.9;
+  const d = nearBoat ? 80 + Math.random() * 500 : 350 + Math.random() * 450;
+  return {
+    x: sim.x - Math.sin(a) * d + (Math.random() - 0.5) * 500,
+    y: sim.y - Math.cos(a) * d + (Math.random() - 0.5) * 500,
+    rx: 60 + Math.random() * 90, ry: 35 + Math.random() * 55,
+    rot: wind.dir + (Math.random() - 0.5) * 0.5,
+    boost: 1.18 + Math.random() * 0.25,
+  };
+}
+function windAt(x, y, t) {
+  // temporal gust + directional wobble
+  let spd = wind.base * (1
+    + wind.gustiness * 0.6 * Math.sin(t * 0.11)
+    + wind.gustiness * 0.4 * Math.sin(t * 0.043 + 2.1)
+    + wind.gustiness * 0.25 * Math.sin(t * 0.27 + 5));
+  let dir = wind.dir + 6 * D2R * Math.sin(t * 0.021) + 3 * D2R * Math.sin(t * 0.09 + 1);
+  for (const p of wind.puffs) {
+    const dx = x - p.x, dy = y - p.y;
+    const c = Math.cos(-p.rot), s = Math.sin(-p.rot);
+    const lx = (dx * c - dy * s) / p.rx, ly = (dx * s + dy * c) / p.ry;
+    const q = lx * lx + ly * ly;
+    if (q < 1) spd *= 1 + (p.boost - 1) * (1 - q);
+  }
+  return { spd, dir };
+}
+
+// ---------- sail aerodynamic model ----------
+// attack angle alpha (deg): 0 = luffing along the wind, ~18-28 = the groove, >34 = stalled
+function sailCoeffs(alpha) {
+  let cl, cd;
+  if (alpha <= 0) { cl = 0; cd = 0.05; }
+  else if (alpha < 26) { cl = 1.35 * Math.sin(alpha / 26 * Math.PI / 2); cd = 0.08 + 0.25 * (alpha / 26); }
+  else if (alpha < 55) { cl = 1.35 - 0.8 * ((alpha - 26) / 29); cd = 0.33 + 0.9 * ((alpha - 26) / 29); }
+  else { cl = 0.5 - 0.5 * ((alpha - 55) / 125); cd = 1.25 + 0.15 * ((alpha - 55) / 125); }
+  return { cl: Math.max(cl, 0), cd };
+}
+
+// ---------- simulation state ----------
+const sim = {
+  x: 0, y: 0,
+  psi: 90 * D2R,              // heading (0=N, clockwise); start on a beam-reach heading E
+  v: 0,                       // speed through water along course (+fwd)
+  r: 0,                       // yaw rate
+  heel: 0,                    // signed rad, + = heeled to starboard
+  tiller: 0,                  // deg, + = tiller to starboard (bow goes port)
+  mainSheet: 0.70,            // 0 = block-to-block, 1 = fully eased
+  jibSheet: 0.70,
+  jibBacked: false,
+  boomSide: -1,               // -1 = boom to port (starboard tack)
+  paused: false,
+  time: 0,
+  wake: [],
+  lastJibeWarn: -99,
+  out: {},                    // per-frame data for rendering / instruments
+};
+
+function resetSim() {
+  Object.assign(sim, { x: 0, y: 0, psi: 90 * D2R, v: 0, r: 0, heel: 0, tiller: 0, jibBacked: false, boomSide: 1, time: 0, wake: [] });
+  wind.puffs = Array.from({ length: 7 }, () => makePuff(true));
+  // start on the windward seat (wind from port at reset), looking forward
+  if (typeof view !== "undefined") { view.seat = "port"; view.look = "forward"; updateViewButtons(); }
+  syncSliders();
+}
+
+// ---------- physics step ----------
+function step(dt) {
+  sim.time += dt;
+  const w = windAt(sim.x, sim.y, sim.time);
+
+  // boat velocity vector (with previous leeway folded in via course ~ heading here)
+  const bvx = Math.sin(sim.psi) * sim.v, bvy = Math.cos(sim.psi) * sim.v;
+  // wind TO vector
+  const wvx = -Math.sin(w.dir) * w.spd, wvy = -Math.cos(w.dir) * w.spd;
+  // apparent wind vector (relative to boat)
+  const avx = wvx - bvx, avy = wvy - bvy;
+  const aws = Math.hypot(avx, avy);
+  // apparent wind angle: bearing of wind SOURCE relative to bow; + = from starboard
+  const srcWorld = Math.atan2(-avx, -avy);
+  const awa = wrapPi(srcWorld - sim.psi);
+  const twa = wrapPi(w.dir - sim.psi);
+
+  // ---- sails ----
+  const awaAbs = Math.abs(awa) * R2D;
+  function sailForce(area, sheet, minAng, maxAng, backed) {
+    const boomLimit = minAng + sheet * (maxAng - minAng);       // deg from centerline (leeward)
+    let alpha, boomAng;
+    if (backed) {                                               // held to windward
+      boomAng = -Math.min(30, boomLimit);                       // negative = windward side
+      alpha = awaAbs + Math.min(30, boomLimit);
+    } else if (boomLimit >= awaAbs) {                           // sheet slack — sail weathervanes
+      boomAng = awaAbs; alpha = 0;
+    } else {
+      boomAng = boomLimit; alpha = awaAbs - boomLimit;
+    }
+    const { cl, cd } = sailCoeffs(alpha);
+    const q = 0.5 * 1.225 * area * aws * aws;
+    // flow direction in boat frame (unit): from source(awa) toward opposite
+    const fx = -Math.cos(awa), fy = -Math.sin(awa);             // x = fwd, y = stbd
+    // lift perpendicular to flow, oriented toward the bow side
+    let lx = -fy * Math.sign(awa || 1), ly = fx * Math.sign(awa || 1);
+    let Ff = cl * q * lx + cd * q * fx;                         // forward force
+    let Fs = cl * q * ly + cd * q * fy;                         // side force (+stbd)
+    if (backed) { Ff = -0.25 * cd * q; Fs = -Math.sign(awa || 1) * q * 0.9; }
+    return { Ff, Fs, alpha, boomAng };
+  }
+  const main = sailForce(BOAT.mainArea, sim.mainSheet, 4, 80, false);
+  const jib  = sailForce(BOAT.jibArea, sim.jibSheet, 8, 85, sim.jibBacked);
+
+  // heel reduces drive
+  const heelEff = Math.pow(Math.cos(sim.heel), 1.3);
+  let Ffwd = (main.Ff + jib.Ff) * heelEff;
+  let Fside = main.Fs + jib.Fs;
+
+  // ---- heel (first-order chase toward equilibrium) ----
+  const heelTarget = clamp(Math.atan2(Fside * 4.0, 14000), -50 * D2R, 50 * D2R);
+  sim.heel += (heelTarget - sim.heel) * clamp(dt * 1.4, 0, 1);
+
+  // ---- hull drag & speed ----
+  const vh = BOAT.hullSpeed;
+  const wave = 1 + Math.pow(Math.abs(sim.v) / vh, 5) * 2.2;
+  const drag = BOAT.dragC * sim.v * Math.abs(sim.v) * wave;
+  let dv = (Ffwd - drag) / BOAT.mass;
+  // gentle sternway when parked head-to-wind with sails luffing
+  if (Math.abs(sim.v) < 0.35 && main.alpha < 4 && jib.alpha < 4 && !sim.jibBacked && awaAbs < 30)
+    dv -= 0.045;
+  if (sim.jibBacked && Math.abs(sim.v) < 0.6) dv -= 0.03;       // backed jib pushes you aft too
+  sim.v = clamp(sim.v + dv * dt, -0.6, 4.2);
+
+  // ---- yaw ----
+  const Trud = -BOAT.rudderPow * sim.tiller * D2R * (sim.v * Math.abs(sim.v)); // sign flips with sternway
+  const Twh = 1400 * Math.abs(sim.heel) * Math.sign(awa || 0)   // weather helm: turn toward wind
+            + 0.15 * (Math.abs(main.Fs) - Math.abs(jib.Fs)) * Math.sign(awa || 0);
+  let Tback = 0;
+  if (sim.jibBacked && aws > 0.5 && awaAbs < 60)
+    Tback = -Math.sign(awa || sim.boomSide) * 30 * aws * aws;
+  const Tdamp = -BOAT.keelYawDamp * sim.r * (1 + Math.abs(sim.v));
+  sim.r += (Trud + Twh + Tback + Tdamp) / BOAT.yawInertia * dt;
+  sim.r = clamp(sim.r, -0.6, 0.6);
+  sim.psi = (sim.psi + sim.r * dt + 2 * Math.PI) % (2 * Math.PI);
+
+  // ---- leeway ----
+  const lee = clamp(Fside / (BOAT.mass * (sim.v * sim.v + 1.2)) * 0.35, -8 * D2R, 8 * D2R);
+  const course = sim.psi + lee;
+  sim.x += Math.sin(course) * sim.v * dt;
+  sim.y += Math.cos(course) * sim.v * dt;
+
+  // ---- boom side & jibe detection ----
+  const newSide = awa > 0.02 ? -1 : awa < -0.02 ? 1 : sim.boomSide;
+  if (newSide !== sim.boomSide) {
+    if (Math.abs(twa) * R2D > 150 && w.spd * KN > 8 && sim.mainSheet > 0.55 && sim.time - sim.lastJibeWarn > 5) {
+      sim.lastJibeWarn = sim.time;
+      flashHint("💥 CRASH JIBE! The boom slammed across — trim the main in before jibing, and steer smoothly downwind.", true);
+    }
+    sim.boomSide = newSide;
+  }
+
+  // ---- wake ----
+  if ((sim.wake.length === 0 || sim.time - sim.wake[sim.wake.length - 1].t > 0.25) && Math.abs(sim.v) > 0.3) {
+    sim.wake.push({ x: sim.x, y: sim.y, t: sim.time });
+    if (sim.wake.length > 60) sim.wake.shift();
+  }
+
+  // ---- recycle puffs that blew past ----
+  for (let i = 0; i < wind.puffs.length; i++) {
+    const p = wind.puffs[i];
+    p.x += -Math.sin(w.dir) * w.spd * 0.55 * dt;
+    p.y += -Math.cos(w.dir) * w.spd * 0.55 * dt;
+    const dx = p.x - sim.x, dy = p.y - sim.y;
+    if (Math.hypot(dx, dy) > 900) wind.puffs[i] = makePuff(false);
+  }
+
+  sim.out = { w, aws, awa, twa, main, jib, lee };
+}
+
+// ---------- points of sail & hints ----------
+function pointOfSail(twaAbsDeg, vKn) {
+  if (twaAbsDeg < 32) return vKn < 0.6 ? "IN IRONS" : "Pinching / no-sail zone";
+  if (twaAbsDeg < 52) return "Close-hauled";
+  if (twaAbsDeg < 75) return "Close reach";
+  if (twaAbsDeg < 110) return "Beam reach";
+  if (twaAbsDeg < 155) return "Broad reach";
+  return "Run";
+}
+let hintTimer = 0, hintSticky = "";
+function flashHint(msg, sticky) {
+  document.getElementById("hint").textContent = msg;
+  hintTimer = sim.time + 6;
+  if (sticky) hintSticky = msg;
+}
+function autoHint() {
+  if (sim.time < hintTimer) return;
+  const o = sim.out; if (!o.w) return;
+  const twaD = Math.abs(o.twa) * R2D, vKn = sim.v * KN;
+  let msg = "";
+  if (twaD < 32 && vKn < 0.6)
+    msg = "In irons — hold B to back the jib and reverse the tiller as you gather sternway, or wait and steer off as the bow falls away.";
+  else if (o.jib.alpha < 6 && o.main.alpha < 6 && twaD > 40)
+    msg = "Both sails are luffing — sheet in until the luffing just stops.";
+  else if (o.jib.alpha > 34 && twaD < 110)
+    msg = "The jib is stalled (leeward telltale limp) — ease the jib sheet or head up.";
+  else if (o.main.alpha > 40 && twaD < 110)
+    msg = "The main is over-trimmed — ease the mainsheet until the leech telltale streams.";
+  else if (Math.abs(sim.heel) * R2D > 28)
+    msg = "You're overpowered — ease the main, feather up in the puffs.";
+  else if (twaD > 160)
+    msg = "Dead downwind — watch for an accidental jibe. Consider heating up to a broad reach.";
+  else if (o.jib.alpha >= 10 && o.jib.alpha <= 28 && o.main.alpha >= 8 && o.main.alpha <= 30 && vKn > 3)
+    msg = "In the groove — telltales streaming, boat powered up. ⛵";
+  if (msg) document.getElementById("hint").textContent = msg;
+}
+
+// ==========================================================
+// Rendering
+// ==========================================================
+const sea = document.getElementById("sea"), sctx = sea.getContext("2d");
+const sails = document.getElementById("sails"), pctx = sails.getContext("2d");
+
+function resize() {
+  sea.width = Math.max(300, window.innerWidth - 330);
+  sea.height = window.innerHeight;
+}
+window.addEventListener("resize", resize);
+
+let PPM = 6; // pixels per meter (god's-eye zoom — mouse wheel)
+const topView = { source: "water" };             // "water" | "sat" | "chart"
+function w2s(wx, wy) { return { x: sea.width / 2 + (wx - sim.x) * PPM, y: sea.height / 2 - (wy - sim.y) * PPM }; }
+
+// ---------- map tiles for the god's-eye view ----------
+const tileCache = new Map();
+const TILE_URLS = {
+  sat: (z, x, y) => `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${z}/${y}/${x}`,
+  osm: (z, x, y) => `https://tile.openstreetmap.org/${z}/${x}/${y}.png`,
+  sea: (z, x, y) => `https://tiles.openseamap.org/seamark/${z}/${x}/${y}.png`,
+};
+function tileFor(layer, z, x, y) {
+  const key = layer + z + "/" + x + "/" + y;
+  let t = tileCache.get(key);
+  if (!t) {
+    if (tileCache.size > 300) tileCache.delete(tileCache.keys().next().value);
+    t = new Image();
+    t.src = TILE_URLS[layer](z, x, y);
+    tileCache.set(key, t);
+  }
+  return t;
+}
+function drawTiles() {
+  const W = sea.width, H = sea.height;
+  const lat = 38.96 + sim.y / 111130, lon = -76.45 + sim.x / 86600;
+  const maxZ = topView.source === "chart" ? 18 : 19;
+  const z = clamp(Math.round(Math.log2(156543.03392 * Math.cos(lat * D2R) * PPM)), 11, maxZ);
+  const res = 156543.03392 * Math.cos(lat * D2R) / Math.pow(2, z);   // meters per tile pixel
+  const scale = PPM * res, n = Math.pow(2, z), latR = lat * D2R;
+  const px = (lon + 180) / 360 * 256 * n;
+  const py = (1 - Math.log(Math.tan(latR) + 1 / Math.cos(latR)) / Math.PI) / 2 * 256 * n;
+  const tx0 = Math.floor((px - (W / 2) / scale) / 256), tx1 = Math.floor((px + (W / 2) / scale) / 256);
+  const ty0 = Math.floor((py - (H / 2) / scale) / 256), ty1 = Math.floor((py + (H / 2) / scale) / 256);
+  let drew = false;
+  const layers = topView.source === "chart" ? ["osm", "sea"] : ["sat"];
+  for (const layer of layers) {
+    for (let tx = tx0; tx <= tx1; tx++) for (let ty = ty0; ty <= ty1; ty++) {
+      if (tx < 0 || ty < 0 || tx >= n || ty >= n) continue;
+      const img = tileFor(layer, z, tx, ty);
+      if (img.complete && img.naturalWidth > 0) {
+        sctx.drawImage(img, W / 2 + (tx * 256 - px) * scale, H / 2 + (ty * 256 - py) * scale, 256 * scale + 1, 256 * scale + 1);
+        if (layer !== "sea") drew = true;
+      }
+    }
+  }
+  if (drew) {
+    sctx.fillStyle = "rgba(0,0,0,0.45)"; sctx.fillRect(0, H - 16, 310, 16);
+    sctx.fillStyle = "#fff"; sctx.font = "10px sans-serif"; sctx.textAlign = "left";
+    sctx.fillText(topView.source === "chart" ? "© OpenStreetMap contributors · marks: OpenSeaMap" : "Imagery: Esri World Imagery", 6, H - 4);
+  }
+  return drew;
+}
+
+function drawSea() {
+  const W = sea.width, H = sea.height, o = sim.out;
+  const g = sctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, "#14406b"); g.addColorStop(1, "#0d2c4d");
+  sctx.fillStyle = g; sctx.fillRect(0, 0, W, H);
+  const tilesOn = topView.source !== "water" && drawTiles();
+
+  // puffs (dark patches)
+  for (const p of wind.puffs) {
+    const s = w2s(p.x, p.y);
+    if (s.x < -300 || s.x > W + 300 || s.y < -300 || s.y > H + 300) continue;
+    sctx.save(); sctx.translate(s.x, s.y); sctx.rotate(p.rot);
+    sctx.fillStyle = "rgba(6,20,38,0.35)";
+    sctx.beginPath(); sctx.ellipse(0, 0, p.rx * PPM, p.ry * PPM, 0, 0, 2 * Math.PI); sctx.fill();
+    sctx.restore();
+  }
+  // ripple texture aligned to wind (stylized water only)
+  if (!tilesOn) {
+  const wd = o.w ? o.w.dir : 0;
+  sctx.save();
+  sctx.translate(W / 2, H / 2); sctx.rotate(-wd);
+  sctx.strokeStyle = "rgba(255,255,255,0.06)"; sctx.lineWidth = 1;
+  const span = Math.max(W, H);
+  const off = ((sim.time * 14) % 26);
+  for (let yy = -span; yy < span; yy += 26) {
+    sctx.beginPath();
+    for (let xx = -span; xx <= span; xx += 22)
+      sctx.lineTo(xx, yy + off + Math.sin(xx * 0.05 + sim.time * 1.7) * 3);
+    sctx.stroke();
+  }
+  sctx.restore();
+
+  // Annapolis land (comes into view as you approach a shore)
+  for (const L of GE_LAND) {
+    sctx.beginPath();
+    L.pts.forEach((pt, i) => { const s = w2s(pt[0], pt[1]); i ? sctx.lineTo(s.x, s.y) : sctx.moveTo(s.x, s.y); });
+    sctx.closePath(); sctx.fillStyle = L.color; sctx.fill();
+  }
+  // bridges and towers, schematic
+  sctx.lineWidth = 3;
+  for (const [a, b, c] of [[[-3724,3190],[-3334,3612],"#5f6a74"], [[4373,6167],[10219,3723],"rgba(116,132,148,0.9)"]]) {
+    const s1 = w2s(a[0], a[1]), s2 = w2s(b[0], b[1]);
+    sctx.strokeStyle = c; sctx.beginPath(); sctx.moveTo(s1.x, s1.y); sctx.lineTo(s2.x, s2.y); sctx.stroke();
+  }
+  sctx.fillStyle = "#b2544a";
+  for (const [tx, ty] of [[416,1800],[546,2056],[606,1612]]) {
+    const s = w2s(tx, ty); sctx.beginPath(); sctx.arc(s.x, s.y, 3, 0, 7); sctx.fill();
+  }
+  }                                                // end stylized-water-only block
+  // navigation aids, chart-style
+  for (const a of NAVAIDS) {
+    const s = w2s(a.x, a.y);
+    if (s.x < -20 || s.x > sea.width + 20 || s.y < -20 || s.y > sea.height + 20) continue;
+    const red = a.k === "nun" || a.k === "pR" || a.k === "bR";
+    sctx.fillStyle = a.k === "lt" ? "#ffffff" : red ? "#e74c3c" : "#2ecc71";
+    if (a.k === "nun" || a.k === "bR") {
+      sctx.beginPath(); sctx.moveTo(s.x, s.y - 5); sctx.lineTo(s.x - 4.5, s.y + 3.5);
+      sctx.lineTo(s.x + 4.5, s.y + 3.5); sctx.closePath(); sctx.fill();
+    } else if (a.k === "can" || a.k === "jGRG" || a.k === "bG") {
+      sctx.fillRect(s.x - 4, s.y - 4, 8, 8);
+    } else {
+      sctx.beginPath(); sctx.arc(s.x, s.y, 4.5, 0, 7); sctx.fill();
+    }
+    sctx.fillStyle = "#eef4ed"; sctx.font = "9px sans-serif"; sctx.textAlign = "center";
+    sctx.fillText(a.n, s.x, s.y - 8);
+  }
+
+  // wake
+  sctx.strokeStyle = "rgba(255,255,255,0.25)"; sctx.lineWidth = 2; sctx.beginPath();
+  sim.wake.forEach((p, i) => { const s = w2s(p.x, p.y); i ? sctx.lineTo(s.x, s.y) : sctx.moveTo(s.x, s.y); });
+  sctx.stroke();
+
+  drawBoat(W / 2, H / 2);
+  drawWindRose();
+}
+
+function drawBoat(cx, cy) {
+  const o = sim.out;
+  sctx.save();
+  sctx.translate(cx, cy);
+  sctx.rotate(sim.psi);              // canvas +y down; heading 0 = up after rotate
+  const bp = Math.max(PPM, 3);       // keep the boat glyph readable when zoomed out
+  const L = 7.3 * bp, B = 1.95 * bp;
+  // heel shadow (leeward side)
+  const heelPx = clamp(sim.heel * R2D, -45, 45) / 45 * B * 0.9;
+  sctx.fillStyle = "rgba(0,0,0,0.3)";
+  sctx.beginPath(); ellipseHull(heelPx * 0.6, L, B); sctx.fill();
+  // hull
+  sctx.fillStyle = "#f4f1e8"; sctx.strokeStyle = "#8a8577"; sctx.lineWidth = 1.5;
+  sctx.beginPath(); ellipseHull(0, L, B); sctx.fill(); sctx.stroke();
+  // cockpit
+  sctx.fillStyle = "#d9d2bf";
+  sctx.beginPath(); sctx.ellipse(0, L * 0.22, B * 0.5, L * 0.16, 0, 0, 2 * Math.PI); sctx.fill();
+  // tiller
+  sctx.strokeStyle = "#7a5a2f"; sctx.lineWidth = 2.5;
+  sctx.save(); sctx.translate(0, L * 0.42); sctx.rotate(-sim.tiller * D2R);
+  sctx.beginPath(); sctx.moveTo(0, 0); sctx.lineTo(0, -L * 0.22); sctx.stroke(); sctx.restore();
+  // sails (draw from mast slightly fwd of center)
+  const mastY = -L * 0.10;
+  const mainAng = (o.main ? o.main.boomAng : 20) * D2R * (sim.boomSide);
+  const jibSide = sim.jibBacked ? -sim.boomSide : sim.boomSide;
+  const jibAngRaw = (o.jib ? Math.abs(o.jib.boomAng) : 25);
+  const jibAng = jibAngRaw * D2R * jibSide;
+  // main
+  sctx.strokeStyle = "#fff"; sctx.fillStyle = "rgba(255,255,255,0.85)"; sctx.lineWidth = 2;
+  sctx.save(); sctx.translate(0, mastY); sctx.rotate(mainAng);
+  sctx.beginPath(); sctx.moveTo(0, 0);
+  sctx.quadraticCurveTo(sim.boomSide * -6, L * 0.28, 0, L * 0.52);
+  sctx.lineTo(0, 0); sctx.fill(); sctx.stroke(); sctx.restore();
+  // jib
+  sctx.save(); sctx.translate(0, -L * 0.48); sctx.rotate(jibAng);
+  sctx.fillStyle = "rgba(255,255,255,0.75)";
+  sctx.beginPath(); sctx.moveTo(0, 0);
+  sctx.quadraticCurveTo(jibSide * -5, L * 0.2, 0, L * 0.38);
+  sctx.lineTo(0, 0); sctx.fill(); sctx.stroke(); sctx.restore();
+  sctx.restore();
+}
+function ellipseHull(shift, L, B) {
+  sctx.moveTo(shift, -L / 2);
+  sctx.quadraticCurveTo(B + shift, -L * 0.1, B * 0.82 + shift, L * 0.42);
+  sctx.quadraticCurveTo(shift, L * 0.55, -B * 0.82 + shift, L * 0.42);
+  sctx.quadraticCurveTo(-B + shift, -L * 0.1, shift, -L / 2);
+}
+
+function drawWindRose() {
+  const o = sim.out; if (!o.w) return;
+  const cx = 74, cy = 74, R = 52;
+  sctx.save();
+  sctx.fillStyle = "rgba(11,37,69,0.72)";
+  sctx.beginPath(); sctx.arc(cx, cy, R + 14, 0, 2 * Math.PI); sctx.fill();
+  sctx.strokeStyle = "rgba(255,255,255,0.3)";
+  sctx.beginPath(); sctx.arc(cx, cy, R, 0, 2 * Math.PI); sctx.stroke();
+  sctx.fillStyle = "#8da9c4"; sctx.font = "10px sans-serif"; sctx.textAlign = "center";
+  sctx.fillText("N", cx, cy - R - 3);
+  // true wind arrow (blue) points the way wind blows
+  const tw = o.w.dir + Math.PI;
+  arrow(cx, cy, tw, R - 6, "#6db3e8", 3);
+  // apparent wind arrow (gold) relative to world
+  const awWorld = sim.psi + o.awa + Math.PI;
+  arrow(cx, cy, awWorld, R - 18, "#e8b04b", 3);
+  // boat heading tick
+  arrow(cx, cy, sim.psi, R - 30, "#ffffff", 2);
+  sctx.fillStyle = "#6db3e8"; sctx.fillText("true", cx - 30, cy + R + 12);
+  sctx.fillStyle = "#e8b04b"; sctx.fillText("apparent", cx + 22, cy + R + 12);
+  sctx.restore();
+}
+function arrow(cx, cy, ang, len, color, w) {
+  sctx.strokeStyle = color; sctx.fillStyle = color; sctx.lineWidth = w;
+  const dx = Math.sin(ang), dy = -Math.cos(ang);
+  sctx.beginPath(); sctx.moveTo(cx - dx * len * 0.7, cy - dy * len * 0.7);
+  sctx.lineTo(cx + dx * len, cy + dy * len); sctx.stroke();
+  sctx.save(); sctx.translate(cx + dx * len, cy + dy * len); sctx.rotate(Math.atan2(dy, dx) + Math.PI / 2);
+  sctx.beginPath(); sctx.moveTo(0, 0); sctx.lineTo(-4.5, 9); sctx.lineTo(4.5, 9); sctx.fill(); sctx.restore();
+}
+
+// ---------- telltale panel ----------
+function ttState(alpha, side, sail) {
+  // returns 'stream' | 'flutter' | 'stall' | 'limp'
+  const o = sim.out;
+  if (!o.aws || o.aws < 0.8) return "limp";
+  if (sail === "jibW") return alpha < 9 ? "flutter" : "stream";
+  if (sail === "jibL") return alpha > 30 ? "stall" : "stream";
+  if (sail === "mainLeech") return alpha > 34 ? "stall" : alpha < 6 ? "flutter" : "stream";
+  return "stream";
+}
+function drawRibbon(ctx, x, y, dir, state, color, t) {
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(x, y);
+  const L = 26;
+  if (state === "stream") {
+    for (let i = 1; i <= 6; i++)
+      ctx.lineTo(x + dir * i * (L / 6), y + Math.sin(t * 9 + i) * 2);
+  } else if (state === "flutter") {
+    for (let i = 1; i <= 6; i++)
+      ctx.lineTo(x + dir * i * (L / 7) + Math.sin(t * 26 + i * 2.4) * 4, y + Math.sin(t * 31 + i * 1.8) * 7);
+  } else if (state === "stall") {
+    for (let i = 1; i <= 6; i++)
+      ctx.lineTo(x + dir * i * 1.6 + Math.sin(t * 5 + i) * 2, y + i * (L / 7));
+  } else { // limp
+    for (let i = 1; i <= 6; i++) ctx.lineTo(x + dir * i * 1.2, y + i * (L / 6.5));
+  }
+  ctx.stroke();
+}
+function drawSailPanel() {
+  const o = sim.out; if (!o.w) return;
+  const W = sails.width, H = sails.height, t = sim.time;
+  pctx.clearRect(0, 0, W, H);
+  pctx.textAlign = "left";
+
+  // ---- JIB view (top) ----
+  panelLabel(8, 16, "JIB — luff telltales");
+  const jx = 60, jy = 40, chord = 190;
+  const jibAng = clamp((o.jib.boomAng < 0 ? 30 : o.jib.boomAng), 0, 90) * D2R * 0.55;
+  pctx.save(); pctx.translate(jx, jy + 60); pctx.rotate(jibAng * (sim.jibBacked ? -1 : 1) * 0.8);
+  pctx.strokeStyle = "#fff"; pctx.lineWidth = 2.5;
+  pctx.beginPath(); pctx.moveTo(0, 0); pctx.quadraticCurveTo(chord * 0.45, -26, chord, -8); pctx.stroke();
+  // windward telltale (upper/near side), leeward (drawn below chord)
+  drawRibbon(pctx, chord * 0.32, -22, 1, ttState(o.jib.alpha, 0, "jibW"), "#ff6b57", t);
+  drawRibbon(pctx, chord * 0.34, -8, 1, ttState(o.jib.alpha, 0, "jibL"), "#57d98a", t);
+  pctx.restore();
+  legend(8, 148, "#ff6b57", "windward");
+  legend(98, 148, "#57d98a", "leeward");
+  pctx.fillStyle = "#8da9c4"; pctx.font = "10px sans-serif";
+  pctx.fillText(jibTrimText(o.jib.alpha), 178, 148);
+
+  // ---- MAIN view (middle) ----
+  panelLabel(8, 176, "MAINSAIL — leech telltales");
+  const mx = 34, my = 196;
+  pctx.save(); pctx.translate(mx, my + 46);
+  pctx.rotate(clamp(o.main.boomAng, 0, 85) * D2R * 0.5);
+  pctx.strokeStyle = "#fff"; pctx.lineWidth = 2.5;
+  pctx.beginPath(); pctx.moveTo(0, 0); pctx.quadraticCurveTo(110, -30, 225, -10); pctx.stroke();
+  for (const tt of [0.25, 0.5, 0.75, 0.95]) {     // four telltales along the leech curve
+    const bx = 2 * (1 - tt) * tt * 110 + tt * tt * 225;
+    const by = 2 * (1 - tt) * tt * (-30) + tt * tt * (-10);
+    drawRibbon(pctx, bx, by, 1, ttState(o.main.alpha, 0, "mainLeech"), "#e8b04b", t + tt * 4);
+  }
+  pctx.restore();
+  pctx.fillStyle = "#8da9c4"; pctx.font = "10px sans-serif";
+  pctx.fillText(mainTrimText(o.main.alpha), 8, 300);
+
+  // ---- SHROUD telltales + apparent wind (bottom) ----
+  panelLabel(8, 326, "SHROUD telltales (apparent wind)");
+  const sx = W / 2, sy = 384;
+  pctx.strokeStyle = "rgba(255,255,255,0.35)";
+  pctx.beginPath(); pctx.moveTo(sx - 70, sy); pctx.lineTo(sx + 70, sy); pctx.stroke();
+  pctx.fillStyle = "#8da9c4";
+  pctx.beginPath(); pctx.arc(sx - 70, sy, 3, 0, 7); pctx.fill();
+  pctx.beginPath(); pctx.arc(sx + 70, sy, 3, 0, 7); pctx.fill();
+  // ribbons blow with apparent wind (relative to bow-up view)
+  const blow = o.awa + Math.PI; // direction wind travels, boat frame
+  for (const side of [-70, 70]) {
+    pctx.save(); pctx.translate(sx + side, sy); pctx.rotate(blow);
+    drawRibbon(pctx, 0, 0, 0.001, o.aws > 0.8 ? "stream" : "limp", "#c9e6ff", t);
+    // rotate ribbon drawing axis: cheat by drawing streaming ribbon along +y
+    pctx.restore();
+  }
+  // simpler: draw arrow showing AWA
+  pctx.save(); pctx.translate(sx, sy);
+  const ax = Math.sin(blow), ay = -Math.cos(blow);
+  pctx.strokeStyle = "#e8b04b"; pctx.lineWidth = 2;
+  pctx.beginPath(); pctx.moveTo(-ax * 26, -ay * 26); pctx.lineTo(ax * 26, ay * 26); pctx.stroke();
+  pctx.fillStyle = "#e8b04b";
+  pctx.rotate(Math.atan2(ay, ax) + Math.PI / 2);
+  pctx.beginPath(); pctx.moveTo(0, -30); pctx.lineTo(-4, -21); pctx.lineTo(4, -21); pctx.fill();
+  pctx.restore();
+}
+function panelLabel(x, y, s) {
+  pctx.fillStyle = "#8da9c4"; pctx.font = "bold 11px sans-serif";
+  pctx.fillText(s.toUpperCase(), x, y);
+}
+function legend(x, y, color, label) {
+  pctx.strokeStyle = color; pctx.lineWidth = 2;
+  pctx.beginPath(); pctx.moveTo(x, y - 3); pctx.lineTo(x + 16, y - 3); pctx.stroke();
+  pctx.fillStyle = "#8da9c4"; pctx.font = "10px sans-serif"; pctx.fillText(label, x + 20, y);
+}
+function jibTrimText(a) {
+  if (!sim.out.aws || sim.out.aws < 0.8) return "no wind";
+  if (sim.jibBacked) return "BACKED";
+  if (a < 6) return "luffing — trim in / bear away";
+  if (a < 9) return "slightly soft";
+  if (a <= 28) return "in the groove ✓";
+  if (a <= 34) return "edge of stall";
+  return "stalled — ease / head up";
+}
+function mainTrimText(a) {
+  if (!sim.out.aws || sim.out.aws < 0.8) return "no wind";
+  if (a < 6) return "luffing — trim in";
+  if (a <= 30) return "drawing well ✓";
+  if (a <= 40) return "over-trimmed";
+  return "stalled — ease the sheet";
+}
+
+// ==========================================================
+// Cockpit (first-person) view
+// Boat frame: x = forward, y = starboard, z = up (meters).
+// The camera is fixed to the heeled boat; the world tilts.
+// ==========================================================
+const view = { mode: "cockpit", seat: "starboard", look: "forward" };
+
+function drawCockpit() {
+  const W = sea.width, H = sea.height, o = sim.out;
+  if (!o.w) return;
+  // focal length: cap BOTH axes so wide monitors keep a tall vertical field of view
+  // (vertical half-FOV ~45° — enough to see the boom and lower mainsail leech while sailing)
+  const f = Math.min(W * 0.72, H * 0.50);
+  const seatSide = view.seat === "starboard" ? 1 : -1;
+  const cam = { x: -2.6, y: seatSide * 0.92, z: 1.15 };
+  let yaw = 0, pitch = -7 * D2R;
+  if (view.look === "forward") {                  // face toward the rig from either seat: jib,
+    const opp = seatSide !== sim.boomSide;        // boom, and lower leech telltales in frame
+    yaw = sim.boomSide * (opp ? 24 : 10) * D2R;   // (upper leech + masthead = the U look)
+    pitch = (opp ? 17 : 6) * D2R;
+  }
+  else if (view.look === "port") { yaw = -70 * D2R; pitch = -9 * D2R; }
+  else if (view.look === "starboard") { yaw = 70 * D2R; pitch = -9 * D2R; }
+  else if (view.look === "up") {                  // crane up toward the sail: the main's
+    yaw = sim.boomSide * 38 * D2R;                // leech telltales and the Windex in one view
+    pitch = 58 * D2R;
+  }
+  const cyw = Math.cos(yaw), syw = Math.sin(yaw), cp = Math.cos(pitch), sp = Math.sin(pitch);
+  const chl = Math.cos(sim.heel), shl = Math.sin(sim.heel);
+
+  function w2b(wx, wy, wz) {                       // world -> heeled boat frame
+    const dx = wx - sim.x, dy = wy - sim.y;
+    const s = Math.sin(sim.psi), c = Math.cos(sim.psi);
+    const bx = dx * s + dy * c, by = dx * c - dy * s;
+    return { x: bx, y: by * chl - wz * shl, z: by * shl + wz * chl };
+  }
+  const NEAR = 0.15;
+  function toCam(p) {                              // boat-frame -> camera space
+    const dx = p.x - cam.x, dy = p.y - cam.y, dz = p.z - cam.z;
+    const fwd = dx * cyw + dy * syw, right = -dx * syw + dy * cyw;
+    return { r: right, u: -fwd * sp + dz * cp, d: fwd * cp + dz * sp };
+  }
+  function projC(c) { return { x: W / 2 + f * c.r / c.d, y: H / 2 - f * c.u / c.d, d: c.d }; }
+  function proj(p) { const c = toCam(p); return c.d < NEAR ? null : projC(c); }
+  const projW = (wx, wy, wz) => proj(w2b(wx, wy, wz));
+  function poly(pts3, fill, stroke, lw) {
+    // clip the polygon against the near plane (Sutherland–Hodgman) so shapes
+    // that extend behind the camera — like the deck you sit on — stay solid
+    const cs = pts3.map(toCam), out = [];
+    for (let i = 0; i < cs.length; i++) {
+      const a = cs[i], b = cs[(i + 1) % cs.length];
+      const aIn = a.d > NEAR, bIn = b.d > NEAR;
+      if (aIn) out.push(a);
+      if (aIn !== bIn) {
+        const t = (NEAR - a.d) / (b.d - a.d);
+        out.push({ r: a.r + (b.r - a.r) * t, u: a.u + (b.u - a.u) * t, d: NEAR });
+      }
+    }
+    if (out.length < 3) return;
+    const pp = out.map(projC);
+    sctx.beginPath(); pp.forEach((q, i) => i ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y)); sctx.closePath();
+    if (fill) { sctx.fillStyle = fill; sctx.fill(); }
+    if (stroke) { sctx.strokeStyle = stroke; sctx.lineWidth = lw || 1; sctx.stroke(); }
+  }
+  function seg3(a, b, color, lw) {
+    let ca = toCam(a), cb = toCam(b);
+    if (ca.d < NEAR && cb.d < NEAR) return;
+    if (ca.d < NEAR || cb.d < NEAR) {              // clip the segment to the near plane
+      const t = (NEAR - ca.d) / (cb.d - ca.d);
+      const m = { r: ca.r + (cb.r - ca.r) * t, u: ca.u + (cb.u - ca.u) * t, d: NEAR };
+      if (ca.d < NEAR) ca = m; else cb = m;
+    }
+    const p = projC(ca), q = projC(cb);
+    sctx.strokeStyle = color; sctx.lineWidth = lw; sctx.lineCap = "round";
+    sctx.beginPath(); sctx.moveTo(p.x, p.y); sctx.lineTo(q.x, q.y); sctx.stroke();
+  }
+
+  // ---- sky ----
+  const sky = sctx.createLinearGradient(0, 0, 0, H);
+  sky.addColorStop(0, "#8fbfe4"); sky.addColorStop(0.55, "#c6ddef"); sky.addColorStop(1, "#e9f2f8");
+  sctx.fillStyle = sky; sctx.fillRect(0, 0, W, H);
+
+  // ---- water: fill below the projected horizon ----
+  const hor = [];
+  for (let a = 0; a <= 360; a += 4) {
+    const az = a * D2R;
+    const p = projW(sim.x + Math.sin(az) * 5000, sim.y + Math.cos(az) * 5000, 0);
+    if (p) hor.push(p);
+  }
+  hor.sort((p, q) => p.x - q.x);
+  if (hor.length > 1) {
+    const top = Math.min(...hor.map(p => p.y));
+    const g = sctx.createLinearGradient(0, top, 0, H);
+    g.addColorStop(0, "#2e6a97"); g.addColorStop(0.35, "#1c517d"); g.addColorStop(1, "#0e3a60");
+    sctx.fillStyle = g;
+    sctx.beginPath();
+    sctx.moveTo(-60, hor[0].y);
+    hor.forEach(p => sctx.lineTo(p.x, p.y));
+    sctx.lineTo(W + 60, hor[hor.length - 1].y);
+    sctx.lineTo(W + 60, H + 60); sctx.lineTo(-60, H + 60); sctx.closePath(); sctx.fill();
+  } else if (view.look !== "up") {
+    sctx.fillStyle = "#16496f"; sctx.fillRect(0, 0, W, H);
+  }
+
+  // ---- wave crests (perpendicular to the wind, marching downwind) ----
+  const wd = o.w.dir;
+  const ux = -Math.sin(wd), uy = -Math.cos(wd);          // downwind unit
+  const px2 = -uy, py2 = ux;                              // along-crest unit
+  const phase = (sim.time * Math.max(o.w.spd, 1) * 0.45) % 7;
+  sctx.lineWidth = 1.1;
+  for (let k = -16; k <= 16; k++) {
+    const along = k * 7 + phase;
+    sctx.strokeStyle = "rgba(255,255,255,0.10)";
+    sctx.beginPath(); let started = false;
+    for (let s = -110; s <= 110; s += 5) {
+      const wob = Math.sin(s * 0.31 + k * 1.7) * 1.4;
+      const wx = sim.x + ux * (along + wob) + px2 * s;
+      const wy = sim.y + uy * (along + wob) + py2 * s;
+      const q = projW(wx, wy, 0);
+      if (!q || q.d > 260) { started = false; continue; }
+      started ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y); started = true;
+    }
+    sctx.stroke();
+  }
+  // ---- puffs on the water ----
+  for (const p of wind.puffs) {
+    const pts = [];
+    for (let a = 0; a < 360; a += 20) {
+      const lx = Math.cos(a * D2R) * p.rx, ly = Math.sin(a * D2R) * p.ry;
+      const wx = p.x + lx * Math.cos(p.rot) - ly * Math.sin(p.rot);
+      const wy = p.y + lx * Math.sin(p.rot) + ly * Math.cos(p.rot);
+      const q = projW(wx, wy, 0); if (!q) { pts.length = 0; break; } pts.push(q);
+    }
+    if (pts.length === 18) {                     // draw only fully visible puffs
+      sctx.fillStyle = "rgba(8,25,45,0.28)";
+      sctx.beginPath(); pts.forEach((q, i) => i ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y));
+      sctx.closePath(); sctx.fill();
+    }
+  }
+
+  // ---- Annapolis shoreline & landmarks ----
+  drawAnnapolis();
+
+  // ---- compass bearings along the horizon ----
+  const CARDINALS = { 0:"N", 45:"NE", 90:"E", 135:"SE", 180:"S", 225:"SW", 270:"W", 315:"NW" };
+  sctx.font = "bold 12px sans-serif"; sctx.textAlign = "center";
+  for (let deg = 0; deg < 360; deg += 15) {
+    const az = deg * D2R;
+    const hp = projW(sim.x + Math.sin(az) * 5000, sim.y + Math.cos(az) * 5000, 0);
+    if (!hp || hp.x < -30 || hp.x > W + 30 || hp.y < -20 || hp.y > H + 20) continue;
+    const major = deg % 45 === 0;
+    sctx.strokeStyle = "rgba(255,255,255,0.75)"; sctx.lineWidth = major ? 2 : 1;
+    sctx.beginPath(); sctx.moveTo(hp.x, hp.y - (major ? 13 : 7)); sctx.lineTo(hp.x, hp.y - 1); sctx.stroke();
+    if (major) {
+      sctx.fillStyle = "rgba(11,37,69,0.55)";
+      sctx.fillRect(hp.x - 15, hp.y - 32, 30, 16);
+      sctx.fillStyle = "#ffffff";
+      sctx.fillText(CARDINALS[deg], hp.x, hp.y - 20);
+    }
+  }
+
+  // ---- heading tape (screen-fixed, always visible) ----
+  const centerAz = sim.psi + yaw;
+  sctx.fillStyle = "rgba(11,37,69,0.6)";
+  sctx.fillRect(0, 0, W, 30);
+  sctx.font = "bold 11px sans-serif"; sctx.textAlign = "center";
+  const halfFov = Math.atan(W / (2 * f));
+  for (let deg = 0; deg < 360; deg += 10) {
+    const dAz = wrapPi(deg * D2R - centerAz);
+    if (Math.abs(dAz) > halfFov + 0.12) continue;
+    const x = W / 2 + f * Math.tan(dAz);
+    if (x < -20 || x > W + 20) continue;
+    const major = deg % 30 === 0;
+    sctx.strokeStyle = "rgba(255,255,255,0.85)"; sctx.lineWidth = major ? 2 : 1;
+    sctx.beginPath(); sctx.moveTo(x, major ? 18 : 22); sctx.lineTo(x, 29); sctx.stroke();
+    if (major) {
+      sctx.fillStyle = "#ffffff";
+      sctx.fillText(CARDINALS[deg] || String(deg).padStart(3, "0"), x, 14);
+    }
+  }
+  sctx.fillStyle = "#e8b04b";                    // caret marks the bearing you are looking at
+  sctx.beginPath(); sctx.moveTo(W / 2, 30); sctx.lineTo(W / 2 - 5, 38); sctx.lineTo(W / 2 + 5, 38); sctx.fill();
+  // landmark markers on the tape (bearings update as you sail)
+  sctx.font = "10px sans-serif";
+  let lmRow = 0;
+  LANDMARKS_TAPE
+    .map(lm => ({ ...lm, dAz: wrapPi(Math.atan2(lm.x - sim.x, lm.y - sim.y) - centerAz) }))
+    .filter(lm => Math.abs(lm.dAz) < halfFov + 0.1)
+    .sort((a, b) => a.dAz - b.dAz)
+    .forEach(lm => {
+      const x = W / 2 + f * Math.tan(lm.dAz);
+      sctx.fillStyle = "#f4e8cf";
+      sctx.beginPath(); sctx.moveTo(x, 30); sctx.lineTo(x - 3.5, 37); sctx.lineTo(x + 3.5, 37); sctx.fill();
+      const y = 50 + (lmRow % 2) * 16; lmRow++;
+      const bw = sctx.measureText(lm.label).width + 8;
+      sctx.fillStyle = "rgba(11,37,69,0.6)"; sctx.fillRect(x - bw / 2, y - 11, bw, 14);
+      sctx.fillStyle = "#f4e8cf"; sctx.textAlign = "center"; sctx.fillText(lm.label, x, y);
+    });
+
+  // ---- deck & cabin ----
+  const xs =  [3.65, 3.2, 2.6, 1.8, 0.8, -0.4, -1.6, -2.7, -3.5, -3.65];
+  const hbv = [0.05, 0.35, 0.58, 0.76, 0.90, 0.96, 0.93, 0.82, 0.66, 0.60];
+  const deckZ = 0.74;
+  // hull topsides (freeboard walls from sheer down to the waterline) and transom,
+  // drawn before the deck so nothing shows water where the hull should be
+  for (const s of [-1, 1]) {
+    const strip = [];
+    for (let i = 0; i < xs.length; i++) strip.push({ x: xs[i], y: s * hbv[i], z: deckZ });
+    for (let i = xs.length - 1; i >= 0; i--) strip.push({ x: xs[i], y: s * hbv[i] * 0.93, z: 0.05 });
+    poly(strip, "#e2dbc7", "#b0a790", 1);
+  }
+  poly([{x:-3.65,y:0.6,z:deckZ},{x:-3.65,y:-0.6,z:deckZ},{x:-3.56,y:-0.5,z:0.05},{x:-3.56,y:0.5,z:0.05}], "#e6dfcc", "#b0a790", 1);
+  const deckPts = [];
+  for (let i = 0; i < xs.length; i++) deckPts.push({ x: xs[i], y: hbv[i], z: deckZ });
+  for (let i = xs.length - 1; i >= 0; i--) deckPts.push({ x: xs[i], y: -hbv[i], z: deckZ });
+  poly(deckPts, "#efe9da", "#b7ae99", 1.5);
+  poly([{x:2.0,y:0.5,z:0.76},{x:2.0,y:-0.5,z:0.76},{x:1.6,y:-0.56,z:1.14},{x:1.6,y:0.56,z:1.14}], "#ddd5c1", "#b7ae99", 1);
+  poly([{x:1.6,y:0.56,z:1.14},{x:1.6,y:-0.56,z:1.14},{x:-0.5,y:-0.6,z:1.18},{x:-0.5,y:0.6,z:1.18}], "#e6dfcc", "#b7ae99", 1);
+  // cockpit well + seats
+  poly([{x:-0.6,y:0.58,z:0.75},{x:-3.05,y:0.58,z:0.75},{x:-3.05,y:-0.58,z:0.75},{x:-0.6,y:-0.58,z:0.75}], "#cfc7b1");
+  poly([{x:-0.7,y:0.4,z:0.4},{x:-2.95,y:0.4,z:0.4},{x:-2.95,y:-0.4,z:0.4},{x:-0.7,y:-0.4,z:0.4}], "#948b74");
+  // bow pulpit (stainless rail)
+  const pulpit = [
+    {x:2.95,y:0.34,z:deckZ},{x:2.95,y:0.34,z:1.15},{x:3.42,y:0.26,z:1.17},
+    {x:3.64,y:0,z:1.18},{x:3.42,y:-0.26,z:1.17},{x:2.95,y:-0.34,z:1.15},{x:2.95,y:-0.34,z:deckZ}];
+  for (let i = 0; i < pulpit.length - 1; i++) seg3(pulpit[i], pulpit[i + 1], "#c9ced3", 2.4);
+  seg3({x:3.42,y:0.26,z:1.17}, {x:3.42,y:0.26,z:deckZ}, "#c9ced3", 2);
+  seg3({x:3.42,y:-0.26,z:1.17}, {x:3.42,y:-0.26,z:deckZ}, "#c9ced3", 2);
+
+  // ---- rig geometry ----
+  const mastB = { x: 0.6, y: 0, z: 1.18 }, mastT = { x: 0.6, y: 0, z: 8.4 };
+  const bs = sim.boomSide;                                 // -1 = boom to port
+  const bAng = clamp(o.main.boomAng < 0 ? 25 : o.main.boomAng, 3, 85) * D2R;
+  const boomEnd = { x: 0.6 - 3.05 * Math.cos(bAng), y: bs * 3.05 * Math.sin(bAng), z: 1.62 };
+  const js = sim.jibBacked ? -bs : bs;
+  const jAng = clamp(Math.abs(o.jib.boomAng), 5, 90) * D2R;
+  const jTack = { x: 3.45, y: 0, z: 0.8 };
+  const jHead = { x: 1.19, y: 0, z: 6.85 };
+  const jClew = { x: 3.45 - 2.62 * Math.cos(jAng), y: js * 2.62 * Math.sin(jAng), z: 1.05 };
+
+  // leeward shroud first, so the sails drawn after it hide it naturally
+  drawShroud(sim.boomSide);
+
+  // jib (drawn before main — it's farther from the cockpit)
+  seg3({x:3.55,y:0,z:0.76}, mastT, "#9aa5ad", 1.2);        // forestay
+  poly([jHead,
+        {x:(jHead.x+jClew.x)/2 - 0.15, y: jClew.y*0.55 + js*0.3, z:(jHead.z+jClew.z)/2},
+        jClew, jTack], "rgba(251,249,242,0.93)", "#cbc4ae", 1);
+  // jib luff telltales: red = port yarn, green = starboard yarn
+  const windwardSide = (o.awa >= 0 ? 1 : -1);              // wind from starboard => stbd yarns are windward
+  for (const t of [0.32, 0.52, 0.72]) {
+    const p0 = { x: jTack.x + (jHead.x - jTack.x) * t, y: 0, z: jTack.z + (jHead.z - jTack.z) * t };
+    const stP = windwardSide === -1 ? ttState(o.jib.alpha, 0, "jibW") : ttState(o.jib.alpha, 0, "jibL");
+    const stS = windwardSide === 1 ? ttState(o.jib.alpha, 0, "jibW") : ttState(o.jib.alpha, 0, "jibL");
+    yarn3D({ x: p0.x - 0.12, y: -0.05, z: p0.z }, "#ff5a4d", stP);
+    yarn3D({ x: p0.x - 0.12, y: 0.05, z: p0.z }, "#3fd374", stS);
+  }
+
+  // mast, main, boom
+  seg3(mastB, mastT, "#8d8574", 5);
+  poly([{x:0.6,y:0,z:8.25},
+        {x:(0.6+boomEnd.x)/2 - 0.12, y: boomEnd.y*0.55 + bs*0.35, z: 4.6},
+        boomEnd, {x:0.6,y:0,z:1.62}], "rgba(252,250,244,0.95)", "#cbc4ae", 1);
+  seg3({x:0.6,y:0,z:1.62}, boomEnd, "#8d8574", 4);
+  // main leech telltales — four, evenly spaced up the leech (clew to head)
+  for (const t of [0.25, 0.5, 0.75, 0.92]) {
+    const lp = { x: boomEnd.x + (0.6 - boomEnd.x) * t,
+                 y: boomEnd.y * (1 - t) + bs * 0.15 * Math.sin(Math.PI * t),
+                 z: 1.62 + (8.25 - 1.62) * t };
+    yarn3D(lp, "#e8b04b", ttState(o.main.alpha, 0, "mainLeech"));
+  }
+
+  // windward shroud drawn in front of the sails (the leeward one was drawn
+  // before the sails, so the mainsail correctly hides it)
+  drawShroud(-sim.boomSide);
+
+  // ---- masthead Windex (visible looking up) ----
+  if (view.look === "up") {
+    const c0 = { x: 0.6, y: 0, z: 8.62 };
+    const nose = { x: 0.6 + 0.5 * Math.cos(o.awa), y: 0.5 * Math.sin(o.awa), z: 8.62 };
+    const tail = { x: 0.6 - 0.3 * Math.cos(o.awa), y: -0.3 * Math.sin(o.awa), z: 8.62 };
+    seg3(tail, nose, "#ff9f2e", 4);
+    const pn = proj(nose);
+    if (pn) { sctx.fillStyle = "#ff9f2e"; sctx.beginPath(); sctx.arc(pn.x, pn.y, 5, 0, 7); sctx.fill(); }
+    // close-hauled reference tabs at ±45°
+    for (const s of [-1, 1]) {
+      const tp = { x: 0.6 + 0.34 * Math.cos(s * 45 * D2R), y: 0.34 * Math.sin(s * 45 * D2R), z: 8.58 };
+      seg3(c0, tp, s === -1 ? "#ff5a4d" : "#3fd374", 2.5);
+    }
+  }
+
+  // ---- tiller (nearest) ----
+  const tr = sim.tiller * D2R;
+  seg3({ x: -3.3, y: 0, z: 0.66 }, { x: -3.3 + 1.2 * Math.cos(tr), y: 1.2 * Math.sin(tr), z: 0.7 }, "#7a5a2f", 5);
+
+  drawWindRose();
+  // view label (below the heading tape)
+  sctx.fillStyle = "rgba(11,37,69,0.65)";
+  sctx.fillRect(W - 190, 42, 180, 26);
+  sctx.fillStyle = "#eef4ed"; sctx.font = "12px sans-serif"; sctx.textAlign = "center";
+  sctx.fillText(`seat ${view.seat} · looking ${view.look === "up" ? "at the vane" : view.look}`, W - 100, 59);
+
+  function drawAnnapolis() {
+    // tree-lined shores as filled bands from the waterline up
+    for (const s of SHORELINES) {
+      const band = [];
+      for (const p of s.pts) band.push(w2b(p[0], p[1], 0));
+      for (let i = s.pts.length - 1; i >= 0; i--) band.push(w2b(s.pts[i][0], s.pts[i][1], s.h));
+      poly(band, s.color, null, 0);
+    }
+    function bandW(pts, z0, z1, fill) {
+      const b = [];
+      for (const p of pts) b.push(w2b(p[0], p[1], z0));
+      for (let i = pts.length - 1; i >= 0; i--) b.push(w2b(pts[i][0], pts[i][1], z1));
+      poly(b, fill, null, 0);
+    }
+    // US Naval Academy — waterfront halls and the chapel dome (set back inland)
+    bandW([[-2987,2223],[-2748,2470],[-2511,2723]], 5, 21, "#99a090");
+    bandW([[-2850,2300],[-2600,2500]], 5, 26, "#a3a898");
+    bandW([[-3330,2450],[-3250,2485]], 21, 40, "#8f9484");
+    const domeC = proj(w2b(-3290, 2467, 44));
+    if (domeC) {
+      const dd = Math.hypot(-3290 - sim.x, 2467 - sim.y);
+      sctx.fillStyle = "#6f9e8b";
+      sctx.beginPath(); sctx.arc(domeC.x, domeC.y, Math.max(2, 11 * f / dd), Math.PI, 0);
+      sctx.closePath(); sctx.fill();
+    }
+    seg3(w2b(-3290, 2467, 44), w2b(-3290, 2467, 60), "#6f9e8b", 1.5);
+    // Greenbury Point radio towers — three guyed masts with warning lights
+    for (const [tx, ty] of [[416,1800],[546,2056],[606,1612]]) {
+      seg3(w2b(tx - 65, ty, 0), w2b(tx, ty, 78), "rgba(130,130,130,0.35)", 0.8);
+      seg3(w2b(tx + 65, ty, 0), w2b(tx, ty, 78), "rgba(130,130,130,0.35)", 0.8);
+      seg3(w2b(tx, ty, 0), w2b(tx, ty, 110), "#b2544a", 2);
+      const lt = proj(w2b(tx, ty, 112));
+      if (lt) { sctx.fillStyle = "#ff5148"; sctx.beginPath(); sctx.arc(lt.x, lt.y, 2.4, 0, 7); sctx.fill(); }
+    }
+    // Severn River (Naval Academy) bridge — arched deck on piers
+    const sevPts = [];
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8;
+      sevPts.push([-3724 + 390 * t, 3190 + 422 * t, 8 + 13 * Math.sin(Math.PI * t)]);
+    }
+    const sevBand = [];
+    for (const p of sevPts) sevBand.push(w2b(p[0], p[1], p[2]));
+    for (let i = 8; i >= 0; i--) sevBand.push(w2b(sevPts[i][0], sevPts[i][1], sevPts[i][2] - 2.4));
+    poly(sevBand, "#5f6a74", null, 0);
+    for (const i of [1, 3, 5, 7])
+      seg3(w2b(sevPts[i][0], sevPts[i][1], 0), w2b(sevPts[i][0], sevPts[i][1], sevPts[i][2] - 2), "#5f6a74", 2);
+    // Chesapeake Bay Bridge — long hazy span with twin suspension towers
+    const bayA = [4373, 6167], bayB = [10219, 3723], bayPts = [];
+    for (let i = 0; i <= 12; i++) {
+      const t = i / 12;
+      bayPts.push([bayA[0] + (bayB[0] - bayA[0]) * t, bayA[1] + (bayB[1] - bayA[1]) * t,
+                   12 + 26 * Math.exp(-Math.pow((t - 0.35) / 0.2, 2))]);
+    }
+    const bayBand = [];
+    for (const p of bayPts) bayBand.push(w2b(p[0], p[1], p[2]));
+    for (let i = 12; i >= 0; i--) bayBand.push(w2b(bayPts[i][0], bayPts[i][1], bayPts[i][2] - 3));
+    poly(bayBand, "rgba(116,132,148,0.85)", null, 0);
+    for (const t of [0.28, 0.42]) {
+      const bx = bayA[0] + (bayB[0] - bayA[0]) * t, by = bayA[1] + (bayB[1] - bayA[1]) * t;
+      seg3(w2b(bx, by, 0), w2b(bx, by, 107), "rgba(116,132,148,0.9)", 2.2);
+    }
+    for (const i of [2, 5, 8, 10])
+      seg3(w2b(bayPts[i][0], bayPts[i][1], 0), w2b(bayPts[i][0], bayPts[i][1], bayPts[i][2] - 3), "rgba(116,132,148,0.6)", 1.5);
+
+    // ---- navigation aids (positions from the ENC behind chart 12283) ----
+    for (const a of NAVAIDS) {
+      const dd = Math.hypot(a.x - sim.x, a.y - sim.y);
+      if (dd > 5200) continue;
+      const base = proj(w2b(a.x, a.y, 0));
+      if (!base) continue;
+      const hp = h => { const t = proj(w2b(a.x, a.y, h)); return t ? Math.max(2, base.y - t.y) : 2; };
+      if (a.k === "can" || a.k === "jGRG") {
+        const hh = hp(1.3), ww = Math.max(2, hh * 0.7);
+        sctx.fillStyle = "#2e8b57"; sctx.fillRect(base.x - ww / 2, base.y - hh, ww, hh);
+        if (a.k === "jGRG") {                       // junction: green with a red mid-band
+          sctx.fillStyle = "#c0392b"; sctx.fillRect(base.x - ww / 2, base.y - hh * 0.66, ww, hh * 0.33);
+        }
+      } else if (a.k === "nun") {
+        const hh = hp(1.4), ww = Math.max(2, hh * 0.75);
+        sctx.fillStyle = "#c0392b";
+        sctx.beginPath(); sctx.moveTo(base.x - ww / 2, base.y); sctx.lineTo(base.x + ww / 2, base.y);
+        sctx.lineTo(base.x, base.y - hh); sctx.closePath(); sctx.fill();
+      } else if (a.k === "pG" || a.k === "pR") {    // lighted pillar buoy
+        const col = a.k === "pR" ? "#c0392b" : "#2e8b57";
+        const hh = hp(2.6), ww = Math.max(2.5, hh * 0.34);
+        sctx.fillStyle = col;
+        sctx.fillRect(base.x - ww / 2, base.y - hh * 0.45, ww, hh * 0.45);
+        sctx.fillRect(base.x - ww * 0.16, base.y - hh, ww * 0.32, hh * 0.6);
+        sctx.beginPath(); sctx.arc(base.x, base.y - hh, Math.max(1.5, ww * 0.28), 0, 7); sctx.fill();
+      } else if (a.k === "bG" || a.k === "bR") {    // pile beacon with dayboard
+        seg3(w2b(a.x, a.y, 0), w2b(a.x, a.y, 2.6), "#7a6a52", 2.5);
+        const top = proj(w2b(a.x, a.y, 2.9));
+        if (top) {
+          const s2 = Math.max(3, hp(3.2) * 0.28);
+          if (a.k === "bR") {                       // red triangular dayboard
+            sctx.fillStyle = "#c0392b";
+            sctx.beginPath(); sctx.moveTo(top.x, top.y - s2); sctx.lineTo(top.x - s2, top.y + s2 * 0.7);
+            sctx.lineTo(top.x + s2, top.y + s2 * 0.7); sctx.closePath(); sctx.fill();
+          } else {                                  // green square dayboard
+            sctx.fillStyle = "#2e8b57"; sctx.fillRect(top.x - s2 * 0.8, top.y - s2 * 0.8, s2 * 1.6, s2 * 1.6);
+          }
+        }
+      } else if (a.k === "lt") {                    // Triton Light on the seawall
+        seg3(w2b(a.x, a.y, 0), w2b(a.x, a.y, 3.4), "#dfe3e6", 3);
+        const top = proj(w2b(a.x, a.y, 3.7));
+        if (top) { sctx.fillStyle = "#3fd374"; sctx.beginPath(); sctx.arc(top.x, top.y, Math.max(2, hp(4) * 0.14), 0, 7); sctx.fill(); }
+      }
+      if (dd < 1200) {                              // chart label when close aboard
+        sctx.font = "bold 10px sans-serif"; sctx.textAlign = "center";
+        const lw2 = sctx.measureText(a.n).width + 6;
+        sctx.fillStyle = "rgba(11,37,69,0.55)";
+        sctx.fillRect(base.x - lw2 / 2, base.y - hp(1.3) - 22, lw2, 13);
+        sctx.fillStyle = "#ffffff"; sctx.fillText(a.n, base.x, base.y - hp(1.3) - 12);
+      }
+    }
+  }
+
+  function drawShroud(s) {                               // one side's shroud, spreader & yarns
+    const chain = { x: 0.6, y: s * 0.97, z: 0.78 };
+    const tip = { x: 0.6, y: s * 0.85, z: 4.7 };
+    seg3(chain, tip, "#aab4bc", 1.6);
+    seg3(tip, { x: 0.6, y: 0, z: 8.3 }, "#aab4bc", 1.4);
+    seg3({ x: 0.6, y: 0, z: 4.7 }, tip, "#8d8574", 3);   // spreader
+    const yarnState = o.aws < 0.8 ? "limp" : "stream";
+    for (const zz of [1.7, 2.4]) {
+      const t = (zz - chain.z) / (tip.z - chain.z);
+      const p0 = { x: 0.6, y: s * (0.97 + (0.85 - 0.97) * t), z: zz };
+      yarn3D(p0, s === -1 ? "#ff5a4d" : "#3fd374", yarnState);
+    }
+  }
+
+  function yarn3D(p0, color, state) {
+    if (toCam(p0).d < 1.3) return;                         // too close to the camera to focus on
+    const az = o.awa + Math.PI;                            // direction the wind blows toward (boat frame)
+    const dxa = Math.cos(az), dya = Math.sin(az), t = sim.time;
+    const pts = [p0];
+    for (let i = 1; i <= 5; i++) {
+      const L = 0.12 * i;
+      let jy = 0, jz = 0;
+      if (state === "stream") jz = Math.sin(t * 9 + i + p0.z * 7) * 0.02;
+      else if (state === "flutter") { jy = Math.sin(t * 25 + i * 2.1 + p0.z * 5) * 0.06; jz = Math.cos(t * 30 + i) * 0.07; }
+      else if (state === "stall") jz = -L * 0.75;
+      else jz = -L * 0.9;                                  // limp
+      pts.push({ x: p0.x + dxa * L * (state === "stall" || state === "limp" ? 0.25 : 1),
+                 y: p0.y + dya * L * (state === "stall" || state === "limp" ? 0.25 : 1) + jy,
+                 z: p0.z + jz });
+    }
+    const path = pts.map(proj);
+    for (const [c, w] of [["rgba(11,37,69,0.5)", 4.5], [color, 2.7]]) {
+      sctx.strokeStyle = c; sctx.lineWidth = w; sctx.lineCap = "round";
+      sctx.beginPath(); let started = false;
+      for (const q of path) {
+        if (!q) { started = false; continue; }
+        started ? sctx.lineTo(q.x, q.y) : sctx.moveTo(q.x, q.y); started = true;
+      }
+      sctx.stroke();
+    }
+  }
+}
+
+// ---------- view controls ----------
+const bView = document.getElementById("bView"), bSeat = document.getElementById("bSeat");
+function updateViewButtons() {
+  bView.textContent = view.mode === "top" ? "⛵ Cockpit view (V)" : "🔭 God's eye (V)";
+  bSeat.textContent = "Seat: " + view.seat + " (X)";
+  sails.style.display = view.mode === "top" ? "" : "none";   // telltale panel only in god's eye
+  for (const [id, lk] of [["lookPort","port"],["lookFwd","forward"],["lookStbd","starboard"],["lookUp","up"]])
+    document.getElementById(id).classList.toggle("sel", view.look === lk);
+}
+function setLook(lk) { view.look = view.look === lk && lk !== "forward" ? "forward" : lk; updateViewButtons(); }
+const bMap = document.getElementById("bMap");
+function cycleMap() {
+  topView.source = topView.source === "water" ? "sat" : topView.source === "sat" ? "chart" : "water";
+  bMap.textContent = "🗺 Map: " + (topView.source === "water" ? "water" : topView.source === "sat" ? "satellite (Esri)" : "nautical chart (OSM)") + " (M) — wheel zooms";
+}
+bMap.addEventListener("click", cycleMap);
+sea.addEventListener("wheel", e => {
+  if (view.mode !== "top") return;
+  e.preventDefault();
+  PPM = clamp(PPM * Math.exp(-e.deltaY * 0.0012), 0.3, 8);
+}, { passive: false });
+bView.addEventListener("click", () => { view.mode = view.mode === "top" ? "cockpit" : "top"; updateViewButtons(); });
+bSeat.addEventListener("click", () => { view.seat = view.seat === "starboard" ? "port" : "starboard"; updateViewButtons(); });
+document.getElementById("lookPort").addEventListener("click", () => setLook("port"));
+document.getElementById("lookFwd").addEventListener("click", () => setLook("forward"));
+document.getElementById("lookStbd").addEventListener("click", () => setLook("starboard"));
+document.getElementById("lookUp").addEventListener("click", () => setLook("up"));
+
+// ---------- instruments ----------
+function updateInstruments() {
+  const o = sim.out; if (!o.w) return;
+  const twaD = Math.abs(o.twa) * R2D;
+  document.getElementById("iSpd").textContent = (sim.v * KN).toFixed(1) + " kn";
+  document.getElementById("iHdg").textContent = String(Math.round(sim.psi * R2D)).padStart(3, "0") + "°";
+  document.getElementById("iTW").textContent = (o.w.spd * KN).toFixed(0) + " kn @ " + Math.round(o.w.dir * R2D) + "°";
+  document.getElementById("iAW").textContent = (o.aws * KN).toFixed(0) + " kn";
+  document.getElementById("iAWA").textContent = Math.round(Math.abs(o.awa) * R2D) + "° " + (o.awa >= 0 ? "stbd" : "port");
+  document.getElementById("iHeel").textContent = Math.round(Math.abs(sim.heel) * R2D) + "°" + (Math.abs(sim.heel) > 0.02 ? (sim.heel > 0 ? " stbd" : " port") : "");
+  document.getElementById("posLabel").textContent =
+    pointOfSail(twaD, sim.v * KN) + (o.awa >= 0 ? "  ·  starboard tack" : "  ·  port tack");
+}
+
+// ---------- controls ----------
+const cTiller = document.getElementById("cTiller"), cMain = document.getElementById("cMain"), cJib = document.getElementById("cJib");
+function syncSliders() {
+  cTiller.value = sim.tiller;
+  cMain.value = Math.round(sim.mainSheet * 100);
+  cJib.value = Math.round(sim.jibSheet * 100);
+  labels();
+}
+function labels() {
+  const tl = Math.round(sim.tiller);
+  document.getElementById("vTiller").textContent = tl === 0 ? "centered" :
+    Math.abs(tl) + "° " + (tl > 0 ? "stbd" : "port") + " · " +
+    (Math.sign(tl) === sim.boomSide ? "toward sail" : "away from sail");
+  document.getElementById("vMain").textContent = sheetWord(sim.mainSheet);
+  document.getElementById("vJib").textContent = sim.jibBacked ? "BACKED" : sheetWord(sim.jibSheet);
+}
+function sheetWord(s) { return s < 0.15 ? "hard in" : s < 0.4 ? "trimmed" : s < 0.7 ? "eased" : "well eased"; }
+cTiller.addEventListener("input", () => { sim.tiller = Number(cTiller.value); labels(); });
+cMain.addEventListener("input", () => { sim.mainSheet = Number(cMain.value) / 100; labels(); });
+cJib.addEventListener("input", () => { sim.jibSheet = Number(cJib.value) / 100; labels(); });
+document.getElementById("bCenter").addEventListener("click", () => { sim.tiller = 0; syncSliders(); });
+document.getElementById("bReset").addEventListener("click", resetSim);
+document.getElementById("cWind").addEventListener("change", e => {
+  if (weather.mode === "sim") { windPreset(Number(e.target.value)); paintWx(); }
+});
+const cWdir = document.getElementById("cWdir"), cWxMode = document.getElementById("cWxMode");
+cWdir.addEventListener("input", () => {
+  if (weather.mode !== "sim") return;
+  wind.dir = Number(cWdir.value) * D2R;
+  document.getElementById("vWdir").textContent = String(cWdir.value).padStart(3, "0") + "°";
+  paintWx();
+});
+cWxMode.addEventListener("change", () => {
+  weather.mode = cWxMode.value;
+  document.getElementById("simWx").style.display = weather.mode === "sim" ? "" : "none";
+  if (weather.mode === "sim") {
+    windPreset(Number(document.getElementById("cWind").value));
+    cWdir.value = Math.round(((wind.dir * R2D) % 360 + 360) % 360);
+    document.getElementById("vWdir").textContent = String(cWdir.value).padStart(3, "0") + "°";
+  } else if (weather.mode === "live") {
+    weather.lastFetch = -1e9;                    // refresh immediately
+  } else {
+    weather.rNextShift = 0;                      // pick a random target now
+  }
+  paintWx();
+});
+const bBack = document.getElementById("bBack");
+function setBacked(on) { sim.jibBacked = on; bBack.classList.toggle("active", on); labels(); }
+bBack.addEventListener("mousedown", () => setBacked(true));
+bBack.addEventListener("mouseup", () => setBacked(false));
+bBack.addEventListener("mouseleave", () => setBacked(false));
+
+const held = {};
+window.addEventListener("keydown", e => {
+  if (["ArrowLeft", "ArrowRight", " "].includes(e.key)) e.preventDefault();
+  held[e.key.toLowerCase()] = true;
+  if (e.key === " ") { sim.tiller = 0; syncSliders(); }
+  const k = e.key.toLowerCase();
+  if (k === "b") setBacked(true);
+  if (k === "p") sim.paused = !sim.paused;
+  if (k === "v") { view.mode = view.mode === "top" ? "cockpit" : "top"; updateViewButtons(); }
+  if (k === "x") { view.seat = view.seat === "starboard" ? "port" : "starboard"; updateViewButtons(); }
+  if (k === "q") setLook("port");
+  if (k === "e") setLook("starboard");
+  if (k === "f") setLook("forward");
+  if (k === "u") setLook("up");
+  if (k === "m") cycleMap();
+});
+window.addEventListener("keyup", e => {
+  held[e.key.toLowerCase()] = false;
+  if (e.key.toLowerCase() === "b") setBacked(false);
+});
+function pollKeys(dt) {
+  const tr = 42 * dt, sr = 0.5 * dt;
+  if (held["arrowleft"]) { sim.tiller = clamp(sim.tiller - tr, -35, 35); syncSliders(); }
+  if (held["arrowright"]) { sim.tiller = clamp(sim.tiller + tr, -35, 35); syncSliders(); }
+  if (held["t"]) { sim.tiller = clamp(sim.tiller + sim.boomSide * tr, -35, 35); syncSliders(); }  // toward the sail
+  if (held["g"]) { sim.tiller = clamp(sim.tiller - sim.boomSide * tr, -35, 35); syncSliders(); }  // away from the sail
+  if (held["w"]) { sim.mainSheet = clamp(sim.mainSheet - sr, 0, 1); syncSliders(); }
+  if (held["s"]) { sim.mainSheet = clamp(sim.mainSheet + sr, 0, 1); syncSliders(); }
+  if (held["i"]) { sim.jibSheet = clamp(sim.jibSheet - sr, 0, 1); syncSliders(); }
+  if (held["k"]) { sim.jibSheet = clamp(sim.jibSheet + sr, 0, 1); syncSliders(); }
+}
+
+// ---------- main loop ----------
+let last = performance.now(), lastWxPaint = 0;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (!sim.paused) {
+    pollKeys(dt);
+    stepWeather(dt);
+    // fixed substeps for stability
+    const n = Math.max(1, Math.round(dt / 0.02));
+    for (let i = 0; i < n; i++) step(dt / n);
+    autoHint();
+  }
+  if (now - lastWxPaint > 500) { $("wxStatus").innerHTML = weatherStatusHtml(); lastWxPaint = now; }
+  if (view.mode === "top") { drawSea(); drawSailPanel(); }
+  else drawCockpit();
+  updateInstruments();
+  requestAnimationFrame(frame);
+}
+
+// test hook: advance simulation quickly without rendering
+function fastForward(seconds) { const n = Math.round(seconds / 0.02); for (let i = 0; i < n; i++) step(0.02); }
+window.SIM = { sim, wind, step, fastForward, windPreset, resetSim, setBacked, view, setLook,
+               updateViewButtons, weather, fetchLiveWeather, weatherStatusHtml, topView };
+
+resize();
+resetSim();
+document.getElementById("simWx").style.display = "none";   // real-time is the default
+fetchLiveWeather();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
